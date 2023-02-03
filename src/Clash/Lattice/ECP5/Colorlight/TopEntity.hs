@@ -5,7 +5,7 @@ import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
 
-import Clash.Cores.UART
+import Clash.Lattice.ECP5.Colorlight.UARTCPU
 
 -- TODD: First order of business is to clean up these input and outputs
 -- into data types
@@ -49,8 +49,10 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1RxC
     (clk50, rst50) = crg clk25
     en50 = enableGen
 
-    -- Simply echo back uart signals through IO flip flops
-    uartTxBit = ofs1p3bx clk50 rst50 en50 $ ifs1p3bx clk50 rst50 en50 uartRxBit
+    -- Run the UART CPU with a baud rate of 9600
+    uartTxBit = ofs1p3bx clk50 rst50 en50
+                  $ uartCPU (SNat @9600) clk50 rst50 en50
+                  $ ifs1p3bx clk50 rst50 en50 uartRxBit
 
     -- Bidirectional signals require special care.
     -- As an example below we switch between reading from the signal

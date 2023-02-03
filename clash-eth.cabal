@@ -82,6 +82,7 @@ library
   hs-source-dirs: src
   exposed-modules:
     Clash.Lattice.ECP5.Colorlight.TopEntity
+    Clash.Lattice.ECP5.Colorlight.UARTCPU
     Clash.Cores.Ethernet.Ethernet
     Clash.Lattice.ECP5.Prims
     Clash.Lattice.ECP5.Colorlight.CRG
