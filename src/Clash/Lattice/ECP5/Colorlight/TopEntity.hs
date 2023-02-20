@@ -4,7 +4,10 @@ import Clash.Annotations.TH
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
+import Clash.Prelude ( exposeClockResetEnable )
 
+import Clash.Cores.Ethernet.Bridge.Bridge ( uartCPU )
+import Clash.Cores.Ethernet.Bridge.Mdio ( mdioComponent )
 import Clash.Cores.UART
 
 -- TODD: First order of business is to clean up these input and outputs
@@ -48,6 +51,9 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1RxC
   where
     (clk50, rst50) = crg clk25
     en50 = enableGen
+
+    (other_uartTxBit, mdioRequest) = uartCPU (SNat @9600) clk50 rst50 en50 uartRxBit mdioResponse
+    (other_mdio_out, mdioResponse) = (exposeClockResetEnable mdioComponent) clk50 rst50 en50 mdio_in mdioRequest
 
     -- Simply echo back uart signals through IO flip flops
     uartTxBit = ofs1p3bx clk50 rst50 en50 $ ifs1p3bx clk50 rst50 en50 uartRxBit
