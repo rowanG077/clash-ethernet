@@ -104,7 +104,7 @@ nextStep (State SendTARead cnt req) (_, _) = (nextState, (Nothing, Nothing))
 -- Receive data for Read
 nextStep (State (ReadD16 bv) cnt req) (_, inp) = (nextState, (Nothing, response))
   where
-    bv' = replaceBit cnt inp bv
+    bv' = replaceBit (15-cnt) inp bv
     response
       | cnt == 15 = Just $ MDIOReadResult bv'
       | otherwise = Nothing
