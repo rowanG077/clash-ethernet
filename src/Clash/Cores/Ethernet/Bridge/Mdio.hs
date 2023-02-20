@@ -3,13 +3,13 @@ module Clash.Cores.Ethernet.Bridge.Mdio (MDIOResponse, MDIORequest, mdioComponen
 import Clash.Prelude
 
 data MDIORequest
-  = Read (BitVector 5) (BitVector 5) -- PHY address, REG address
-  | Write (BitVector 5) (BitVector 5) (BitVector 16) -- PHY address, REG address, 16-bit data
+  = MDIORead (Unsigned 5) (Unsigned 5) -- PHY address, REG address
+  | MDIOWrite (Unsigned 5) (Unsigned 5) (BitVector 16) -- PHY address, REG address, 16-bit data
   deriving (Show, Eq, Generic, NFDataX)
 
 data MDIOResponse
-  = ReadResult (BitVector 16) -- contents of register that was read
-  | WriteAck
+  = MDIOReadResult (BitVector 16) -- contents of register that was read
+  | MDIOWriteAck
   deriving (Show, Eq, Generic, NFDataX)
 
 
