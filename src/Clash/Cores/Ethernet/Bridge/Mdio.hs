@@ -13,10 +13,12 @@ data MDIOResponse
   deriving (Show, Eq, Generic, NFDataX)
 
 
-mdioComponent :: HiddenClockResetEnable dom
+mdioComponent
+  :: HiddenClockResetEnable dom
   => KnownDomain dom
-  => BiSignalIn 'Floating dom 1 -- eth_mdio in
+  => Signal dom Bit -- eth_mdio in
   -> Signal dom (Maybe MDIORequest) -- receive a request from the bridge
-  -> (BiSignalOut 'Floating dom 1, -- eth_mdio out
-    Signal dom (Maybe MDIOResponse)) -- Output result or ACK when we have it
+  -> ( Signal dom (Maybe Bit) -- eth_mdio out
+     , Signal dom (Maybe MDIOResponse)  -- Output result or ACK when we have it
+     )
 mdioComponent = undefined
