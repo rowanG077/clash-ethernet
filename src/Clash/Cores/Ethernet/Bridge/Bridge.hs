@@ -6,14 +6,168 @@ import Clash.Cores.Ethernet.Bridge.Mdio
 import Clash.Prelude
 import Clash.Cores.UART
 
+
+data Instruction = UARTRead | UARTWrite | UARTNoOp
+  deriving (Show, Eq, Generic, NFDataX)
+
+decodeUARTInstr :: BitVector 8 -> Instruction
+decodeUARTInstr 0 = UARTRead
+decodeUARTInstr 1 = UARTWrite
+decodeUARTInstr _ = UARTNoOp
+
+-- | datatype that stores all the registers
+data BridgeRegisters = BridgeRegisters
+    { physicalAddr :: Unsigned 5,
+      registerAddr :: Unsigned 5,
+      d16content :: Unsigned 16
+    } deriving (Show, Eq, Generic, NFDataX)
+
+data BridgeOpState
+  --  read/write common states
+  = Idle
+  | AwaitPhyAddr Instruction 
+  | AwaitRegAddr Instruction
+  | SendInstruction Instruction
+  -- write specific states
+  | AwaitD16_1
+  | AwaitD16_2
+  -- read specific states
+  | AwaitMDIOResponse
+  | ProcessResponseToUART1
+  | WriteResponseToUART1 (BitVector 8)
+  | ProcessResponseToUART2
+  | WriteResponseToUART2 (BitVector 8)
+  deriving (Show, Eq, Generic, NFDataX)
+
+data BridgeState = BridgeState BridgeOpState BridgeRegisters
+  deriving (Show, Eq, Generic, NFDataX)
+
+type UARTInput = (Maybe (BitVector 8), Bool)
+type UARTOutput = (BitVector 8)
+
+bridgeStep :: BridgeState 
+  -> (UARTInput, Maybe MDIOResponse)
+  -> (BridgeState, (Maybe UARTOutput, Maybe MDIORequest))
+
+{- read and write common states -> no case distinctions on instruction -}
+-- > idle state
+bridgeStep s@(BridgeState Idle registers) ((input, _), _)
+  = case input of
+      Nothing -> (s, noOutput)
+      Just bv -> (, noOutput) . instructionToState . decodeUARTInstr $ bv
+    where
+      -- stay in same state if noop
+      instructionToState UARTNoOp = s 
+      -- go to await physical address in all other cases
+      instructionToState instr = BridgeState (AwaitPhyAddr instr) registers
+      noOutput = (Nothing, Nothing)
+
+-- > waiting for physical device address
+bridgeStep (BridgeState (AwaitPhyAddr instr) registers) ((Just bv, _), _)
+  = (nextState, noOutput)
+    where
+      nextState = (BridgeState (AwaitRegAddr instr) newRegs)
+      newRegs = registers { physicalAddr = resize . unpack $ bv }
+      noOutput = (Nothing, Nothing)
+
+-- > waiting for mdio register address
+bridgeStep (BridgeState (AwaitRegAddr instr) registers) ((Just bv, _), _)
+  = (nextState, noOutput)
+    where
+      nextState = (BridgeState (SendInstruction instr) newRegs)
+      newRegs = registers { registerAddr = resize . unpack $ bv }
+      noOutput = (Nothing, Nothing)
+
+{- read specific states -}
+-- > sending the read instruction to MDIO
+bridgeStep (BridgeState (SendInstruction UARTRead) registers) _
+  = (nextState, (requestToUart, requestToMdio))
+    where
+      requestToUart = Nothing
+      -- create MDIORequest i.e. retrive data that is stored at the specified address
+      requestToMdio = pure $ MDIORead (physicalAddr registers) (registerAddr registers)
+      -- next we wait for a reponse
+      nextState = BridgeState AwaitMDIOResponse registers
+
+-- > receiving MDIO reponse and put it into a register
+bridgeStep (BridgeState AwaitMDIOResponse registers) (_, Just input)
+  = (nextState, noOutput)
+    where      
+      -- no ouput is sent
+      noOutput = (Nothing, Nothing)
+      -- move response into register
+      newRegs = case input of 
+                  MDIOReadResult r -> registers { d16content = unpack r }
+                  otherwise -> error "Impossible"
+      -- next we wait for a reponse
+      nextState = BridgeState ProcessResponseToUART1 newRegs
+
+-- > processing resulg -> get 8 msb of result
+bridgeStep (BridgeState ProcessResponseToUART1 registers) (_, _)
+  = (nextState, noOutput)
+    where
+      -- no ouput is sent
+      noOutput = (Nothing, Nothing)
+      -- create bitvector
+      bv = pack . resize . (\x -> shiftR x 8) . d16content $ registers
+      -- next we wait for a reponse
+      nextState = BridgeState (WriteResponseToUART1 bv) registers
+
+-- > write to uart -> wait for ack
+bridgeStep (BridgeState s@(WriteResponseToUART1 bv) registers) ((_, ack), _)
+  = (nextState, (requestToUart, requestToMdio))
+    where
+      -- write first 8 most significant bits to uart
+      requestToUart = pure bv
+      requestToMdio = Nothing
+      -- if ack is recieved we send next 8 bits. Otherwise we stay in same state
+      nextState | ack       = BridgeState ProcessResponseToUART2 registers
+                | otherwise = BridgeState s registers
+
+-- > processing second part of response
+bridgeStep (BridgeState ProcessResponseToUART2 registers) (_, _)
+  = (nextState, noOutput)
+    where
+      -- no ouput is sent
+      noOutput = (Nothing, Nothing)
+      -- create bitvector
+      bv = pack . resize . d16content $ registers
+      -- next we send the bits
+      nextState = BridgeState (WriteResponseToUART2 bv) registers
+
+-- > write to uart second part -> wait for ack
+bridgeStep (BridgeState s@(WriteResponseToUART2 bv) registers) ((_, ack), _)
+  = (nextState, (requestToUart, requestToMdio))
+    where
+      -- write first 8 least significant bits to uart
+      requestToUart = pure bv
+      requestToMdio = Nothing
+      -- if ack is recieved we go back to idle. Otherwise we stay in same state
+      nextState | ack       = BridgeState Idle registers
+                | otherwise = BridgeState s registers
+
 uartToMdioBridge :: HiddenClockResetEnable dom
   => KnownDomain dom
-  => Signal dom (Maybe (BitVector 8)) -- receive byte from UART
-  -> Signal dom Bool -- Ack coming from UART
-  -> Signal dom (Maybe MDIOResponse) -- get result of request from mdio component
-  -> (Signal dom (Maybe (BitVector 8)) -- transmit byte to UART
-  , Signal dom (Maybe MDIORequest)) -- request to mdio component
-uartToMdioBridge _ _ _ = error "unimplemented"
+  => Signal dom (Maybe (BitVector 8)) 
+  -- ^ receive byte from UART
+  -> Signal dom Bool 
+  -- ^ Ack coming from UART
+  -> Signal dom (Maybe MDIOResponse) 
+  -- ^ get result of request from mdio component
+  -> ( Signal dom (Maybe (BitVector 8)) 
+  -- ^ transmit byte to UART
+     , Signal dom (Maybe MDIORequest)) 
+  -- ^ request to mdio component
+uartToMdioBridge rxByte ackRx mdioResp = (txByte, mdioReq)
+  where
+    -- define state signal
+    initState = BridgeState Idle (BridgeRegisters 0 0 0)
+
+    -- define output signal
+    outputSignal = mealy  bridgeStep initState $ bundle (bundle (rxByte, ackRx), mdioResp)
+
+    -- define output signals
+    (txByte, mdioReq) = unbundle outputSignal
 
 uartCPU :: forall (dom :: Domain) (baud :: Nat) . ValidBaud dom baud
   => KnownDomain dom
