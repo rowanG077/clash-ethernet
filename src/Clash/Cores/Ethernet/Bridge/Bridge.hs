@@ -98,7 +98,7 @@ bridgeStep (BridgeState AwaitMDIOResponse registers) (_, Just input)
       -- move response into register
       newRegs = case input of 
                   MDIOReadResult r -> registers { d16content = unpack r }
-                  otherwise -> error "Impossible"
+                  _ -> error "Impossible"
       -- next we wait for a reponse
       nextState = BridgeState ProcessResponseToUART1 newRegs
 
@@ -145,6 +145,48 @@ bridgeStep (BridgeState s@(WriteResponseToUART2 bv) registers) ((_, ack), _)
       -- if ack is recieved we go back to idle. Otherwise we stay in same state
       nextState | ack       = BridgeState Idle registers
                 | otherwise = BridgeState s registers
+
+{- write specific states -}
+-- > sending the read instruction to MDIO
+bridgeStep (BridgeState s@(SendInstruction UARTWrite) registers) (_, repl)
+  = (nextState, (requestToUart, requestToMdio))
+    where
+      requestToUart = Nothing
+      -- create MDIORequest i.e. retrive data that is stored at the specified address
+      requestToMdio = case repl of
+                        Just MDIOWriteAck -> Nothing
+                        _ ->    pure $ MDIOWrite (physicalAddr registers) 
+                                                 (registerAddr registers) 
+                                                 (pack . d16content $ registers)
+      -- next we wait for a reponse -> if response received go back to idel state
+      nextState = case repl of 
+                    Just MDIOWriteAck -> BridgeState Idle registers
+                    _ -> BridgeState s registers
+
+-- > waiting for d16 data 1/2
+bridgeStep (BridgeState AwaitD16_1 registers) ((Just input, _), _)
+  = (nextState, noOutput)
+    where
+      noOutput = (Nothing, Nothing)
+      -- write input to d16 register
+      newRegs = registers { d16content = (\x -> shiftL x 8) . resize . unpack $ input }
+      -- next we wait for second d16 data part
+      nextState = BridgeState AwaitD16_2 newRegs
+
+-- > waiting for d16 data 2/2
+bridgeStep (BridgeState AwaitD16_2 registers) ((Just input, _), _)
+  = (nextState, noOutput)
+    where
+      -- no output
+      noOutput = (Nothing, Nothing)
+      -- write the output to mdio. Will be sent in next state
+      msbD16 = d16content registers -- current content of d16 (msb)
+      d16Data = (xor msbD16) . resize . unpack $ input
+      -- update d16 register -> just for cleanness
+      newRegs = registers { d16content = d16Data }
+      -- next we send the request
+      nextState = BridgeState (SendInstruction UARTWrite) newRegs
+
 
 uartToMdioBridge :: HiddenClockResetEnable dom
   => KnownDomain dom
