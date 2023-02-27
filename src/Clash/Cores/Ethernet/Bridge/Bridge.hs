@@ -27,10 +27,8 @@ data BridgeOpState
   = Idle
   | AwaitPhyAddr Instruction 
   | AwaitRegAddr Instruction
+  | AwaitD16 Int Instruction
   | SendInstruction Instruction
-  -- write specific states
-  | AwaitD16_1
-  | AwaitD16_2
   -- read specific states
   | AwaitMDIOResponse
   | ProcessResponseToUART1
@@ -74,9 +72,32 @@ bridgeStep (BridgeState (AwaitPhyAddr instr) registers) ((Just bv, _), _)
 bridgeStep (BridgeState (AwaitRegAddr instr) registers) ((Just bv, _), _)
   = (nextState, noOutput)
     where
-      nextState = (BridgeState (SendInstruction instr) newRegs)
+      nextState = (BridgeState (AwaitD16 0 instr) newRegs)
       newRegs = registers { registerAddr = resize . unpack $ bv }
       noOutput = (Nothing, Nothing)
+
+-- > waiting for d16 data
+bridgeStep (BridgeState (AwaitD16 cnt instr) registers) ((Just input, _), _)
+  = (nextState, noOutput)
+    where
+      -- no output
+      noOutput = (Nothing, Nothing)
+      -- write the output into d16 register
+      newRegs = 
+        case cnt of 
+          -- put first bits into msb slot
+          0 -> registers { d16content = (\x -> shiftL x 8) . resize . unpack $ input }
+          -- put second bits into lsb slot
+          1 -> registers { d16content = (xor $ d16content registers) . resize . unpack $ input }
+          _ -> error "Impossible"
+      -- next we send the request
+      nextState = 
+        case cnt of 
+          -- wait for next bit packet
+          0 -> BridgeState (AwaitD16 1 instr) newRegs
+          -- sent bits to mdio component
+          1 -> BridgeState (SendInstruction instr) newRegs
+          _ -> error "Impossible"
 
 {- read specific states -}
 -- > sending the read instruction to MDIO
@@ -102,14 +123,14 @@ bridgeStep (BridgeState AwaitMDIOResponse registers) (_, Just input)
       -- next we wait for a reponse
       nextState = BridgeState ProcessResponseToUART1 newRegs
 
--- > processing resulg -> get 8 msb of result
+-- > processing result -> get 8 msb of result
 bridgeStep (BridgeState ProcessResponseToUART1 registers) (_, _)
   = (nextState, noOutput)
     where
       -- no ouput is sent
       noOutput = (Nothing, Nothing)
       -- create bitvector
-      bv = pack . resize . (\x -> shiftR x 8) . d16content $ registers
+      bv = pack . resize . (\x -> shiftR x 8) . d16content $ 7 --registers
       -- next we wait for a reponse
       nextState = BridgeState (WriteResponseToUART1 bv) registers
 
@@ -131,7 +152,7 @@ bridgeStep (BridgeState ProcessResponseToUART2 registers) (_, _)
       -- no ouput is sent
       noOutput = (Nothing, Nothing)
       -- create bitvector
-      bv = pack . resize . d16content $ registers
+      bv = pack . resize . d16content 7 --registers
       -- next we send the bits
       nextState = BridgeState (WriteResponseToUART2 bv) registers
 
@@ -162,31 +183,6 @@ bridgeStep (BridgeState s@(SendInstruction UARTWrite) registers) (_, repl)
       nextState = case repl of 
                     Just MDIOWriteAck -> BridgeState Idle registers
                     _ -> BridgeState s registers
-
--- > waiting for d16 data 1/2
-bridgeStep (BridgeState AwaitD16_1 registers) ((Just input, _), _)
-  = (nextState, noOutput)
-    where
-      noOutput = (Nothing, Nothing)
-      -- write input to d16 register
-      newRegs = registers { d16content = (\x -> shiftL x 8) . resize . unpack $ input }
-      -- next we wait for second d16 data part
-      nextState = BridgeState AwaitD16_2 newRegs
-
--- > waiting for d16 data 2/2
-bridgeStep (BridgeState AwaitD16_2 registers) ((Just input, _), _)
-  = (nextState, noOutput)
-    where
-      -- no output
-      noOutput = (Nothing, Nothing)
-      -- write the output to mdio. Will be sent in next state
-      msbD16 = d16content registers -- current content of d16 (msb)
-      d16Data = (xor msbD16) . resize . unpack $ input
-      -- update d16 register -> just for cleanness
-      newRegs = registers { d16content = d16Data }
-      -- next we send the request
-      nextState = BridgeState (SendInstruction UARTWrite) newRegs
-
 
 uartToMdioBridge :: HiddenClockResetEnable dom
   => KnownDomain dom

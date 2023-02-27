@@ -1,28 +1,35 @@
 import serial
-from struct import pack, unpack, iter_unpack
+from struct import pack, unpack
 from time import sleep
 import sys
 
 READ = 0b0
 WRITE = 0b1
 
-requests = [
-    (WRITE, 0b00001, 0b00010, 0xf),
-    (READ, 0b00010, 0b00011, 0xf)
-]
+w_req = []
+for i in range(5**2):
+     w_req.append(
+          (READ, 0b1, i, 0xf)
+     )
+r_req = []
+for i in range(5**2):
+     r_req.append(
+          (READ, 0b1, i, 0xf)
+     )
 
 # Check format is correct
-for (instr, addr1, addr2, data) in requests:
-        print(pack('>?', instr))
-        print(pack('>B', addr1))
-        print(pack('>B', addr2))
-        print(pack('>B', data >> 8))
-        print(pack('>B', data & 0b1111))
-        print("_____________________________")
+
+def print_instruction(instruction):
+    (instr, addr1, addr2, data) = instruction
+    print(pack('>?', instr))
+    print(pack('>B', addr1))
+    print(pack('>B', addr2))
+    print(pack('>B', data >> 8))
+    print(pack('>B', data & 0b1111))
+    print("_____________________________")
 
 try:
     with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as ser:
-        
         i = 0
     
         while ser.in_waiting == 0:
@@ -35,16 +42,23 @@ try:
             
         ser.read(1)
         
-        for (instr, addr1, addr2, data) in requests:
+        for (instr, addr1, addr2, data) in w_req:
             ser.write(pack(">B", instr))
             ser.write(pack(">B", addr1))
             ser.write(pack(">B", addr2))
             ser.write(pack(">B", data))
             
-        (result, ) = unpack(">B", ser.read(1))
+        for (instr, addr1, addr2, data) in r_req:
+            ser.write(pack(">B", instr))
+            ser.write(pack(">B", addr1))
+            ser.write(pack(">B", addr2))
+            ser.write(pack(">B", data))             
+            (result, ) = unpack(">B", ser.read(1))
+            (result2, ) = unpack(">B", ser.read(1))
+            print("result: {}".format((result << 8) ^ result2))
 
-        print("result: {}".format(result))
-except:
+except Exception as e:
+    print(e)
     print("Could not open device at port (check that its plugged in)")
         
         

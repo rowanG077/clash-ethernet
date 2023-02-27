@@ -61,7 +61,7 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1Rx
     mdioReg = ifs1p3bx clk50 rst50 en50 mdio
     (mdioWrite, mdioResponse) = (exposeClockResetEnable mdioComponent clk50 rst50 en50) mdioReg mdioRequest
 
-    -- UART<->MDIO bridge
+    -- UART-MDIO bridge
     (uartTxBit, mdioRequest) = (ofs1p3bx clk50 rst50 en50 $ txBit, req)
       where
         (txBit, req) = uartCPU (SNat @9600) clk50 rst50 en50 rxBit mdioResponse
