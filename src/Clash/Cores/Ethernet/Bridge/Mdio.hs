@@ -1,4 +1,4 @@
-module Clash.Cores.Ethernet.Bridge.Mdio (MDIOResponse, MDIORequest, mdioComponent) where
+module Clash.Cores.Ethernet.Bridge.Mdio (MDIOResponse (..), MDIORequest (..), mdioComponent) where
 
 import Clash.Prelude
 
