@@ -3,33 +3,46 @@ module Clash.Cores.Ethernet.Bridge.Mdio (MDIOResponse (..), MDIORequest (..), md
 import Clash.Prelude
 
 data MDIORequest
-  = MDIORead (Unsigned 5) (Unsigned 5) -- PHY address, REG address
-  | MDIOWrite (Unsigned 5) (Unsigned 5) (BitVector 16) -- PHY address, REG address, 16-bit data
+  -- | PHY address, REG address
+  = MDIORead (Unsigned 5) (Unsigned 5)
+  -- | PHY address, REG address, 16-bit data
+  | MDIOWrite (Unsigned 5) (Unsigned 5) (BitVector 16)
   deriving (Show, Eq, Generic, NFDataX)
 
 data MDIOResponse
-  = MDIOReadResult (BitVector 16) -- contents of register that was read
+  = MDIOReadResult (BitVector 16)
+  -- ^ contents of register that was read
   | MDIOWriteAck
   deriving (Show, Eq, Generic, NFDataX)
 
 data PacketState
-  = SendPreamble -- 32 times a 1
-  | SendST -- 01
-  | SendOP -- 10 or 01
+  = SendPreamble
+  -- ^ Send 32 times a 1
+  | SendST
+  -- ^ Send 01
+  | SendOP
+  -- ^ Send 10 for read, 01 for write
   | SendPA5
+  -- ^ Send the PHY address
   | SendRA5
-  | SendTAWrite -- 10
-  | SendTARead -- Z0 (gives control to other side)
+  -- ^ Send the REG address
+  | SendTAWrite
+  -- ^ Send 10
+  | SendTARead
+  -- ^ Wait while receiving Z0 (gives control to other side)
   | WriteD16
+  -- ^ Write data to a register
   | ReadD16 (BitVector 16)
+  -- ^ Receive data from a register
   | Idle
+  -- ^ Waiting for the bridge to issue a new request
   deriving (Show, Eq, Generic, NFDataX)
 
 -- PacketState, counter, MDIORequest
 data State = State PacketState (Index 32) MDIORequest
   deriving (Show, Eq, Generic, NFDataX)
 
--- Send the two bits in this order and then transition into a new `PacketState`
+-- | Send the two bits in this order and then transition into a new `PacketState`
 sendTwo :: PacketState -> (Bit,Bit) -> State -> (State, (Maybe Bit, Maybe MDIOResponse))
 sendTwo nextStage (fstBit, sndBit) (State curState cnt req) = (nextState, (Just out, Nothing))
   where
@@ -40,7 +53,7 @@ sendTwo nextStage (fstBit, sndBit) (State curState cnt req) = (nextState, (Just 
       | cnt == 0 = State curState 1 req
       | otherwise = State nextStage 0 req
 
--- Send an address and then transition into a new `PacketState`
+-- | Send an address and then transition into a new `PacketState`
 sendFive :: PacketState -> (Unsigned 5) -> State -> (State, (Maybe Bit, Maybe MDIOResponse))
 sendFive nextStage bv (State curState cnt req) = (nextState, (Just out, Nothing))
   where
@@ -51,6 +64,7 @@ sendFive nextStage bv (State curState cnt req) = (nextState, (Just out, Nothing)
       | cnt < 4 = State curState (cnt+1) req
       | otherwise = State nextStage 0 req
 
+-- | State transitions in the mealy machine
 nextStep :: State -> (Maybe MDIORequest, Bit) -> (State, (Maybe Bit, Maybe MDIOResponse))
 -- Nothing happens
 nextStep s@(State Idle _ _) (Nothing, _) = (s, (Nothing, Nothing))
@@ -104,6 +118,8 @@ nextStep (State SendTARead cnt req) (_, _) = (nextState, (Nothing, Nothing))
 -- Receive data for Read
 nextStep (State (ReadD16 bv) cnt req) (_, inp) = (nextState, (Nothing, response))
   where
+    -- Receive a bit from the register we're reading
+    -- Bit 15 first, bit 0 last!
     bv' = replaceBit (15-cnt) inp bv
     response
       | cnt == 15 = Just $ MDIOReadResult bv'
@@ -121,7 +137,7 @@ nextStep (State WriteD16 cnt req) (_, _) = (nextState, (Just out, response))
   where
     out = case req of
       (MDIORead _ _) -> error "Impossible"
-                            -- Get the `cnt`-th bit of the register write
+                            -- Get a bit from the register write
                             -- Bit 15 first, bit 0 last!
       (MDIOWrite _ _ bv) -> bv ! (15 - cnt)
     response
@@ -135,13 +151,18 @@ nextStep (State WriteD16 cnt req) (_, _) = (nextState, (Just out, response))
 mdioComponent
   :: HiddenClockResetEnable dom
   => KnownDomain dom
-  => Signal dom Bit -- eth_mdio in
-  -> Signal dom (Maybe MDIORequest) -- receive a request from the bridge
-  -> ( Signal dom (Maybe Bit) -- eth_mdio out
-     , Signal dom (Maybe MDIOResponse)  -- Output result or ACK when we have it
+  -- | eth_mdio in
+  => Signal dom Bit
+  -- | Receive a request from the bridge
+  -> Signal dom (Maybe MDIORequest)
+  -- |
+  -- 1. eth_mdio out
+  -- 2. Output result or ACK when we have it
+  -> ( Signal dom (Maybe Bit)
+     , Signal dom (Maybe MDIOResponse)
      )
 mdioComponent mdioIn req = unbundle
-                            $ mealy nextStep initialState
-                            $ bundle (req, mdioIn)
+                         $ mealy nextStep initialState
+                         $ bundle (req, mdioIn)
   where
     initialState = State Idle 0 (MDIORead 0 0)
