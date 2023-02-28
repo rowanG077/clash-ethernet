@@ -130,7 +130,7 @@ bridgeStep (BridgeState ProcessResponseToUART1 registers) (_, _)
       -- no ouput is sent
       noOutput = (Nothing, Nothing)
       -- create bitvector
-      bv = pack . resize . (\x -> shiftR x 8) . d16content $ 7 --registers
+      bv = pack . resize . (\x -> shiftR x 8) . d16content $ registers
       -- next we wait for a reponse
       nextState = BridgeState (WriteResponseToUART1 bv) registers
 
@@ -152,7 +152,7 @@ bridgeStep (BridgeState ProcessResponseToUART2 registers) (_, _)
       -- no ouput is sent
       noOutput = (Nothing, Nothing)
       -- create bitvector
-      bv = pack . resize . d16content 7 --registers
+      bv = pack . resize . d16content $ registers
       -- next we send the bits
       nextState = BridgeState (WriteResponseToUART2 bv) registers
 
