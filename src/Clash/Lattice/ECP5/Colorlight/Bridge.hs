@@ -1,6 +1,6 @@
 {-# language FlexibleContexts #-}
 
-module Clash.Cores.Ethernet.Bridge.Bridge (uartCPU) where
+module Clash.Lattice.ECP5.Colorlight.Bridge (uartCPU) where
 
 import Clash.Cores.Ethernet.Bridge.Mdio
 import Clash.Prelude

@@ -8,7 +8,7 @@ import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
 import Clash.Prelude ( exposeClockResetEnable )
 
-import Clash.Cores.Ethernet.Bridge.Bridge ( uartCPU )
+import Clash.Lattice.ECP5.Colorlight.Bridge ( uartCPU )
 import Clash.Cores.Ethernet.Bridge.Mdio ( mdioComponent )
 
 -- TODD: First order of business is to clean up these input and outputs
