@@ -61,6 +61,7 @@ bridgeStep s@(BridgeState Idle registers) ((input, _), _)
       noOutput = (Nothing, Nothing)
 
 -- > waiting for physical device address
+bridgeStep s@(BridgeState (AwaitPhyAddr _) _) ((Nothing, _), _) = (s, (Nothing, Nothing))
 bridgeStep (BridgeState (AwaitPhyAddr instr) registers) ((Just bv, _), _)
   = (nextState, noOutput)
     where
@@ -69,6 +70,7 @@ bridgeStep (BridgeState (AwaitPhyAddr instr) registers) ((Just bv, _), _)
       noOutput = (Nothing, Nothing)
 
 -- > waiting for mdio register address
+bridgeStep s@(BridgeState (AwaitRegAddr _) _) ((Nothing, _), _) = (s, (Nothing, Nothing))
 bridgeStep (BridgeState (AwaitRegAddr instr) registers) ((Just bv, _), _)
   = (nextState, noOutput)
     where
@@ -77,6 +79,7 @@ bridgeStep (BridgeState (AwaitRegAddr instr) registers) ((Just bv, _), _)
       noOutput = (Nothing, Nothing)
 
 -- > waiting for d16 data
+bridgeStep s@(BridgeState (AwaitD16 _ _) _) ((Nothing, _), _) = (s, (Nothing, Nothing))
 bridgeStep (BridgeState (AwaitD16 cnt instr) registers) ((Just input, _), _)
   = (nextState, noOutput)
     where
@@ -99,6 +102,9 @@ bridgeStep (BridgeState (AwaitD16 cnt instr) registers) ((Just input, _), _)
           1 -> BridgeState (SendInstruction instr) newRegs
           _ -> error "Impossible"
 
+{- impossible states -}
+bridgeStep (BridgeState (SendInstruction UARTNoOp) _) _ = error "Impossible"
+
 {- read specific states -}
 -- > sending the read instruction to MDIO
 bridgeStep (BridgeState (SendInstruction UARTRead) registers) _
@@ -111,6 +117,7 @@ bridgeStep (BridgeState (SendInstruction UARTRead) registers) _
       nextState = BridgeState AwaitMDIOResponse registers
 
 -- > receiving MDIO reponse and put it into a register
+bridgeStep s@(BridgeState AwaitMDIOResponse _) (_, Nothing) = (s, (Nothing, Nothing))
 bridgeStep (BridgeState AwaitMDIOResponse registers) (_, Just input)
   = (nextState, noOutput)
     where      
