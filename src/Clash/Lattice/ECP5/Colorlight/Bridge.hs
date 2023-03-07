@@ -117,7 +117,11 @@ bridgeStep (BridgeState (SendInstruction UARTRead) registers) _
       nextState = BridgeState AwaitMDIOResponse registers
 
 -- > receiving MDIO reponse and put it into a register
-bridgeStep s@(BridgeState AwaitMDIOResponse _) (_, Nothing) = (s, (Nothing, Nothing))
+bridgeStep s@(BridgeState AwaitMDIOResponse registers) (_, Nothing) = (s, (Nothing, requestToMdio))
+    where
+      -- keep outputting the request until we get a result back
+      -- the mdioComponent is slowed down so may take multiple cycles to read the request
+      requestToMdio = pure $ MDIORead (physicalAddr registers) (registerAddr registers)
 bridgeStep (BridgeState AwaitMDIOResponse registers) (_, Just input)
   = (nextState, noOutput)
     where      
@@ -181,6 +185,8 @@ bridgeStep (BridgeState s@(SendInstruction UARTWrite) registers) (_, repl)
     where
       requestToUart = Nothing
       -- create MDIORequest i.e. retrive data that is stored at the specified address
+      -- keep outputting the request until we get an ACK back
+      -- the mdioComponent is slowed down so may take multiple cycles to read the request
       requestToMdio = case repl of
                         Just MDIOWriteAck -> Nothing
                         _ ->    pure $ MDIOWrite (physicalAddr registers) 

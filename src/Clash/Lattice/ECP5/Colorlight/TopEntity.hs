@@ -1,3 +1,4 @@
+{-# LANGUAGE NumericUnderscores #-}
 module Clash.Lattice.ECP5.Colorlight.TopEntity (topEntity) where
 
 import Data.Maybe ( isNothing )
@@ -10,6 +11,13 @@ import Clash.Prelude ( exposeClockResetEnable )
 
 import Clash.Lattice.ECP5.Colorlight.Bridge ( uartCPU )
 import Clash.Cores.Ethernet.Bridge.Mdio ( mdioComponent )
+
+-- | Calculate how many cycles in `dom` fit into a `MDC` cycle
+-- | We're aiming for 1.5Mhz so a single clock cycle is 10^12 / (1.5 * 10^6) = 666_666 picoseconds
+-- | It is then divided by 2 because `MDCCycle` only describes half of a clock cycle
+-- |
+-- | This is slightly slower than the 2.5Mhz maximum but still more than fast enough.
+type MDCCycle (dom :: Domain) = DivRU 333_333 (DomainPeriod dom)
 
 -- TODD: First order of business is to clean up these input and outputs
 -- into data types
@@ -54,12 +62,13 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1Rx
     en50 = enableGen
 
     -- MDIO component
+    mdc = oscillate clk50 rst50 en50 False (SNat @(MDCCycle Dom50 - 1))
     mdio, mdioReg :: Signal Dom50 Bit
     (mdio_out, mdio) = bb mdio_in
                          (register clk50 rst50 en50 1 $ boolToBit . isNothing <$> mdioWrite)
                          (ofs1p3bx clk50 rst50 en50 $ fromJustX <$> mdioWrite)
     mdioReg = ifs1p3bx clk50 rst50 en50 mdio
-    (mdioWrite, mdioResponse) = (exposeClockResetEnable mdioComponent clk50 rst50 en50) mdioReg mdioRequest
+    (mdioWrite, mdioResponse) = (exposeClockResetEnable mdioComponent clk50 rst50 en50) mdc mdioReg mdioRequest
 
     -- UART-MDIO bridge
     (uartTxBit, mdioRequest) = (ofs1p3bx clk50 rst50 en50 $ txBit, req)
@@ -80,7 +89,7 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1Rx
       , pure 0 -- sdram_ba
       , dq_out -- sdram_dq
       , mdio_out -- eth_mdio
-      , pure 0 -- eth_mdc
+      , boolToBit <$> mdc -- eth_mdc
       , pure 1 -- eth_rst_n
       , eth0RxClk -- eth0_tx_clk
       , pure 0 -- eth0_tx_ctl

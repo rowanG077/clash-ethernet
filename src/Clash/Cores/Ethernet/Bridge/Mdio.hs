@@ -111,8 +111,10 @@ nextStep (State WriteD16 cnt (sendBv, Just dat)) (_, _) = (nextState, (Just out,
 mdioComponent
   :: HiddenClockResetEnable dom
   => KnownDomain dom
+  -- | The mdc clock
+  => Signal dom Bool
   -- | eth_mdio in
-  => Signal dom Bit
+  -> Signal dom Bit
   -- | Receive a request from the bridge
   -> Signal dom (Maybe MDIORequest)
   -- |
@@ -121,8 +123,16 @@ mdioComponent
   -> ( Signal dom (Maybe Bit)
      , Signal dom (Maybe MDIOResponse)
      )
-mdioComponent mdioIn req = unbundle
-                         $ mealy nextStep initialState
+mdioComponent mdc mdioIn req = unbundle
+                         $ mealyMDC nextStep initialState
                          $ bundle (req, mdioIn)
   where
-    initialState = State Idle 0 (MDIORead 0 0)
+    initialState = State Idle 0 (0, Nothing)
+    -- Custom mealy function for slowing down to MDC speeds
+    -- Largely stolen from the Clash prelude
+    mealyMDC iS =
+      \i -> let (s',o) = unbundle $ f <$> s <*> i
+                -- s      = register clk rst en initialState s'
+                mdcEn = isFalling False mdc
+                s      = regEn iS mdcEn s'
+            in  o
