@@ -130,7 +130,7 @@ mdioComponent mdc mdioIn req = unbundle
     initialState = State Idle 0 (0, Nothing)
     -- Custom mealy function for slowing down to MDC speeds
     -- Largely stolen from the Clash prelude
-    mealyMDC iS =
+    mealyMDC f iS =
       \i -> let (s',o) = unbundle $ f <$> s <*> i
                 -- s      = register clk rst en initialState s'
                 mdcEn = isFalling False mdc
