@@ -28,7 +28,7 @@ def print_instruction(instruction):
     print("_____________________________")
 
 try:
-    with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as ser:
+    with serial.Serial('/dev/ttyUSB1', 9600, timeout=1) as ser:
         i = 0
     
         while ser.in_waiting == 0:
@@ -39,7 +39,7 @@ try:
                 sys.exit(1)
             i += 1
             
-        ser.read(1)
+        #ser.read(1)
         
         for (instr, addr1, addr2, data) in w_req:
             ser.write(pack(">B", instr))

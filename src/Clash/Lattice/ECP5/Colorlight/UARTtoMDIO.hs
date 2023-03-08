@@ -1,6 +1,6 @@
 {-# language FlexibleContexts #-}
 
-module Clash.Lattice.ECP5.Colorlight.Bridge (uartCPU) where
+module Clash.Lattice.ECP5.Colorlight.UARTtoMDIO (uartCPU) where
 
 import Clash.Cores.Ethernet.Bridge.Mdio
 import Clash.Prelude
@@ -130,7 +130,8 @@ bridgeStep (BridgeState ProcessResponseToUART1 registers) (_, _)
       -- no ouput is sent
       noOutput = (Nothing, Nothing)
       -- create bitvector
-      bv = pack . resize . (\x -> shiftR x 8) . d16content $ registers
+      --bv = pack . resize . (\x -> shiftR x 8) . d16content $ registers
+      bv = 0b01010101
       -- next we wait for a reponse
       nextState = BridgeState (WriteResponseToUART1 bv) registers
 
@@ -152,7 +153,8 @@ bridgeStep (BridgeState ProcessResponseToUART2 registers) (_, _)
       -- no ouput is sent
       noOutput = (Nothing, Nothing)
       -- create bitvector
-      bv = pack . resize . d16content $ registers
+      --bv = pack . resize . d16content $ registers
+      bv = 0b10101010
       -- next we send the bits
       nextState = BridgeState (WriteResponseToUART2 bv) registers
 
