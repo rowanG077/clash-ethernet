@@ -24,8 +24,7 @@ def print_instruction(instruction):
     print(pack('>?', instr))
     print(pack('>B', addr1))
     print(pack('>B', addr2))
-    print(pack('>B', data >> 8))
-    print(pack('>B', data & 0b1111))
+    print(pack('>H', data))
     print("_____________________________")
 
 try:
@@ -46,15 +45,16 @@ try:
             ser.write(pack(">B", instr))
             ser.write(pack(">B", addr1))
             ser.write(pack(">B", addr2))
-            ser.write(pack(">B", data))
+            ser.write(pack(">H", data))
             
         for (instr, addr1, addr2, data) in r_req:
             ser.write(pack(">B", instr))
             ser.write(pack(">B", addr1))
             ser.write(pack(">B", addr2))
-            ser.write(pack(">B", data))             
+            ser.write(pack(">H", data))
             (result, ) = unpack(">B", ser.read(1))
             (result2, ) = unpack(">B", ser.read(1))
+            print("first byte: {}, second byte: {}".format(bin(result), bin(result2)))
             print("result: {}".format((result << 8) ^ result2))
 
 except Exception as e:
