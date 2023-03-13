@@ -9,7 +9,7 @@ import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
 import Clash.Prelude ( exposeClockResetEnable )
 
-import Clash.Lattice.ECP5.Colorlight.UARTtoMDIO ( uartCPU )
+import Clash.Lattice.ECP5.Colorlight.Bridge ( uartCPU )
 import Clash.Cores.Ethernet.Bridge.Mdio ( mdioComponent )
 
 -- | Calculate how many cycles in `dom` fit into a `MDC` cycle
