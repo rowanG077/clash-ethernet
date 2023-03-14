@@ -2,6 +2,7 @@ module Clash.Lattice.ECP5.Colorlight.TopEntity (topEntity) where
 
 import Clash.Annotations.TH
 import Clash.Explicit.Prelude
+import Clash.Cores.Ethernet.RGMII (rgmiiReceiver, rgmiiSender)
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
 
@@ -65,7 +66,7 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1RxC
 
     {- ETH0 ~ RGMII SETUP -}    
     -- generate tx_clk (125mHz)
-    eth0TxClk = _
+    eth0TxClk = eth0RxClk --TODO change
 
     -- delay input signals
     eth0RxClk' = delayf _ _ _ eth0RxClk
@@ -73,21 +74,24 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1RxC
     eth0RxData' = delayf _ _ _ _eth0RxData
 
     -- demultiplex signal
-    (eth0RxErr, eth0RxVal) = iddrx1f _ _ _ eth0RxCtl'
-    (eth0RxData1, eth0RxData2) = iddrx1f  _ _ _ eth0RxData'
+    (eth0RxErr, eth0RxVal) = iddrx1f eth0RxClk' resetGen eth0RxCtl'
+    (eth0RxData1, eth0RxData2) = iddrx1f eth0RxClk' resetGen eth0RxData'
 
     -- rgmii component
     (eth0TxErr, eth0TxEn, eth0TxData1, eth0TxData2) = rgmiiSender macOutput
     macInput = rgmiiReceiver eth0RxErr eth0RxVal eth0RxData1 eth0RxData2
 
     -- multiplex signals
-    eth0TxCtl = oddrx1f eth0TxClk _ eth0TxErr eth0TxEn
-    eth0TxData = oddrx1f eth0TxClk _ eth0TxData1 eth0TxData2
+    eth0TxCtl = oddrx1f eth0TxClk resetGen eth0TxErr eth0TxEn
+    eth0TxData = oddrx1f eth0TxClk resetGen eth0TxData1 eth0TxData2
 
     -- delay output signals
     eth0TxClk' = delayf _ _ _ eth0TxClk
     eth0TxCtl' = delayf _ _ _ eth0TxCtl
     eth0TxData' = delayf _ _ _ eth0TxData
+
+    -- clock forwarding
+    eth0TxClk'' = oddrx1f eth0TxClk' resetGen (pure 1) (pure 0)
 
     {- SETUP MAC LAYER -}
     macOutput = pure 0 -- TODO
