@@ -183,6 +183,54 @@ fs1p3bx# !_ clk rst en inp = let rst' = unsafeFromHighPolarity rst
   |]) #-}
 {-# NOINLINE fs1p3bx# #-}
 
+-- | x1 input DDR
+iddrx1f
+  :: KnownConfiguration fast ('DomainConfiguration fast fPeriod edge reset init polarity)     -- 0
+  => KnownConfiguration slow ('DomainConfiguration slow (2*fPeriod) edge reset init polarity) -- 1
+  => NFDataX a     -- 2
+  => BitPack a     -- 3
+  => Clock slow    -- 4
+  -- ^ Clock
+  -> Reset slow    -- 5
+  -- ^ Reset
+  -> Signal fast a -- 6
+  -- ^ Input
+  -> Signal slow (a, a) -- 7
+  -- ^ Output on rising/falling edge
+iddrx1f clk rst xs = ddrIn clk rst enableGen (unpack 0, unpack 0, unpack 0) xs
+{-# ANN iddrx1f (InlinePrimitive [Verilog] $ unindent [i|
+  [ { "BlackBox" :
+      { "name"     : "Clash.Lattice.ECP5.Prims.iddrx1f"
+      , "kind"     : "Declaration"
+      , "template" :
+  "// IDDRX1F begin
+  ~IF~ISSCALAR[6]~THEN
+    IDDRX1F ~GENSYM[iddrx1f][0] (
+      .D(~VAR[d0][7]),
+      .C(~ARG[4]),
+      .R(~ARG[5]),
+      .Q0(~RESULT[0]),
+      .Q1(~RESULT[1])
+    );
+  ~ELSE
+    genvar ~GENSYM[i][1];
+    for (~SYM[1] = 0; ~SYM[1] < ~SIZE[~TYP[7]]; ~SYM[1] = ~SYM[1] + 1) begin : ~GENSYM[IDDRX1F_GEN][2]
+      IDDRX1F ~GENSYM[iddrx1f][3] (
+        .D(~VAR[d0][7][~SYM[1]]),
+        .C(~ARG[4]),
+        .R(~ARG[5]),
+        .Q0(~RESULT[0][~SYM[1]]),
+        .Q1(~RESULT[1][~SYM[1]])
+      );
+    end
+  ~FI
+  // IDDRX1F end"
+      }
+    }
+  ]
+  |]) #-}
+{-# NOINLINE iddrx1f #-}
+
 -- | x1 output DDR
 oddrx1f
   :: KnownConfiguration fast ('DomainConfiguration fast fPeriod edge reset init polarity)     -- 0
