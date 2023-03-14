@@ -52,11 +52,7 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1RxC
     -- Simply echo back uart signals through IO flip flops
     uartTxBit = ofs1p3bx clk50 rst50 en50 $ ifs1p3bx clk50 rst50 en50 uartRxBit
 
-    -- Bidirectional signals require special care.
-    -- As an example below we switch between reading from the signal
-    -- in one cycle and writing to it in the next.
-    -- We combine this with IO flip flops.
-    -- We simply write back the signal we got.
+    {- MDIO SETUP -}
     dq :: Signal Dom50 (BitVector 32)
     mdio :: Signal Dom50 Bit
     (dq_out, dq) = bb dq_in onoff (ofs1p3bx clk50 rst50 en50 dqReg) -- sdram_dq
@@ -66,6 +62,35 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1RxC
     mdioReg = ifs1p3bx clk50 rst50 en50 mdio
 
     onoff = register clk50 rst50 en50 0 $ fmap complement onoff
+
+    {- ETH0 ~ RGMII SETUP -}    
+    -- generate tx_clk (125mHz)
+    eth0TxClk = _
+
+    -- delay input signals
+    eth0RxClk' = delayf _ _ _ eth0RxClk
+    eth0RxCtl' = delayf _ _ _ _eth0RxCtl
+    eth0RxData' = delayf _ _ _ _eth0RxData
+
+    -- demultiplex signal
+    (eth0RxErr, eth0RxVal) = iddrx1f _ _ _ eth0RxCtl'
+    (eth0RxData1, eth0RxData2) = iddrx1f  _ _ _ eth0RxData'
+
+    -- rgmii component
+    (eth0TxErr, eth0TxEn, eth0TxData1, eth0TxData2) = rgmiiSender macOutput
+    macInput = rgmiiReceiver eth0RxErr eth0RxVal eth0RxData1 eth0RxData2
+
+    -- multiplex signals
+    eth0TxCtl = oddrx1f eth0TxClk _ eth0TxErr eth0TxEn
+    eth0TxData = oddrx1f eth0TxClk _ eth0TxData1 eth0TxData2
+
+    -- delay output signals
+    eth0TxClk' = delayf _ _ _ eth0TxClk
+    eth0TxCtl' = delayf _ _ _ eth0TxCtl
+    eth0TxData' = delayf _ _ _ eth0TxData
+
+    {- SETUP MAC LAYER -}
+    macOutput = pure 0 -- TODO
 
     result =
       ( uartTxBit -- uart_tx
@@ -79,9 +104,9 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0RxClk _eth0RxCtl _eth0RxData eth1RxC
       , mdio_out -- eth_mdio
       , pure 0 -- eth_mdc
       , pure 1 -- eth_rst_n
-      , eth0RxClk -- eth0_tx_clk
-      , pure 0 -- eth0_tx_ctl
-      , pure 0 -- eth0_tx_data
+      , eth0TxClk' -- eth0_tx_clk
+      , eth0TxCtl' -- eth0_tx_ctl
+      , eth0TxData' -- eth0_tx_data
       , eth1RxClk -- eth1_tx_clk
       , pure 0 -- eth1_tx_ctl
       , pure 0 -- eth1_tx_data
