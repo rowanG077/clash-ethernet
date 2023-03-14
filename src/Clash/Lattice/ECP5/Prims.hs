@@ -206,7 +206,7 @@ iddrx1f clk rst xs = ddrIn clk rst enableGen (unpack 0, unpack 0, unpack 0) xs
   "// IDDRX1F begin
   ~IF~ISSCALAR[6]~THEN
     IDDRX1F ~GENSYM[iddrx1f][0] (
-      .D(~VAR[d0][7]),
+      .D(~VAR[d][7]),
       .C(~ARG[4]),
       .R(~ARG[5]),
       .Q0(~RESULT[0]),
@@ -214,7 +214,7 @@ iddrx1f clk rst xs = ddrIn clk rst enableGen (unpack 0, unpack 0, unpack 0) xs
     );
   ~ELSE
     genvar ~GENSYM[i][1];
-    for (~SYM[1] = 0; ~SYM[1] < ~SIZE[~TYP[7]]; ~SYM[1] = ~SYM[1] + 1) begin : ~GENSYM[IDDRX1F_GEN][2]
+    for (~SYM[1] = 0; ~SYM[1] < ~SIZE[~TYP[6]]; ~SYM[1] = ~SYM[1] + 1) begin : ~GENSYM[IDDRX1F_GEN][2]
       IDDRX1F ~GENSYM[iddrx1f][3] (
         .D(~VAR[d0][7][~SYM[1]]),
         .C(~ARG[4]),
