@@ -196,7 +196,7 @@ iddrx1f
   -- ^ Reset
   -> Signal fast a -- 6
   -- ^ Input
-  -> Signal slow (a, a) -- 7
+  -> Signal slow (a, a)
   -- ^ Output on rising/falling edge
 iddrx1f clk rst xs = ddrIn clk rst enableGen (unpack 0, unpack 0, unpack 0) xs
 {-# ANN iddrx1f (InlinePrimitive [Verilog] $ unindent [i|
@@ -207,7 +207,7 @@ iddrx1f clk rst xs = ddrIn clk rst enableGen (unpack 0, unpack 0, unpack 0) xs
   "// IDDRX1F begin
   ~IF~ISSCALAR[6]~THEN
     IDDRX1F ~GENSYM[iddrx1f][0] (
-      .D(~VAR[d][7]),
+      .D(~VAR[d][6]),
       .C(~ARG[4]),
       .R(~ARG[5]),
       .Q0(~RESULT[0]),
@@ -217,7 +217,7 @@ iddrx1f clk rst xs = ddrIn clk rst enableGen (unpack 0, unpack 0, unpack 0) xs
     genvar ~GENSYM[i][1];
     for (~SYM[1] = 0; ~SYM[1] < ~SIZE[~TYP[6]]; ~SYM[1] = ~SYM[1] + 1) begin : ~GENSYM[IDDRX1F_GEN][2]
       IDDRX1F ~GENSYM[iddrx1f][3] (
-        .D(~VAR[d0][7][~SYM[1]]),
+        .D(~VAR[d0][6][~SYM[1]]),
         .C(~ARG[4]),
         .R(~ARG[5]),
         .Q0(~RESULT[0][~SYM[1]]),
@@ -300,7 +300,7 @@ delayf
 delayf !_ !_ !_ !_ inp = inp
 {-# ANN delayf (InlinePrimitive [Verilog] $ unindent [i|
   [ { "BlackBox" :
-      { "name"     : "ECP5.Prims.delayf"
+      { "name"     : "Clash.Lattice.ECP5.Prims.delayf"
       , "kind"     : "Declaration"
       , "template" :
   "// DELAYF begin
@@ -348,7 +348,7 @@ delayg
 delayg !_ inp = inp
 {-# ANN delayg (InlinePrimitive [Verilog] $ unindent [i|
   [ { "BlackBox" :
-      { "name"     : "ECP5.Prims.delayg"
+      { "name"     : "Clash.Lattice.ECP5.Prims.delayg"
       , "kind"     : "Declaration"
       , "template" :
   "// DELAYG begin
