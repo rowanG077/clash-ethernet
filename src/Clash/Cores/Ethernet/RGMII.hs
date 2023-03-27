@@ -1,9 +1,9 @@
-module Clash.Cores.Ethernet.RGMII ( rgmiiSender, rgmiiReceiver, RGMIIRXChannel, RGMIITXChannel ) where
+module Clash.Cores.Ethernet.RGMII ( rgmiiSender, rgmiiReceiver, RGMIIRXChannel (..), RGMIITXChannel (..) ) where
 
-import Clash.Prelude
-import Data.Maybe ( isJust )
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
+import Clash.Prelude
+import Data.Maybe ( isJust )
 
 
 -- NOTE: make ddrDomain generic -> 2 * ddrDomain frequency = domain frequency
@@ -22,13 +22,15 @@ data RGMIITXChannel ddrDomain = RGMIITXChannel
   }
 
 -- | sender component of RGMII -> NOTE: for now transmission error is not considered
-rgmiiSender :: delay <= 127
-  => Clock domDDR -- the DDR tx clock
-  -> Reset domDDR
-  -> Enable domDDR
+rgmiiSender :: forall dom domDDR delay fPeriod edge reset init polarity . delay <= 127
+  => KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)     -- 0
+  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity) -- 1
+  => Clock dom -- the DDR tx clock
+  -> Reset dom
+  -> Enable dom
   -> SNat delay
   -- ^ tx delay needed
-  -> Signal domDDR (Maybe (BitVector 8))
+  -> Signal dom (Maybe (BitVector 8))
   -- ^ Maybe the byte we have to output
   -> RGMIITXChannel domDDR
   -- ^ tx channel to the phy
@@ -43,14 +45,15 @@ rgmiiSender txClk rst en delay input = RGMIITXChannel
     txErr = pure 0 -- for now error always low
     data1, data2 :: Signal dom (BitVector 4)
     (data1, data2) = unbundle $ maybe (0, 0) split <$> input
-    
+
     -- multiplex signals
     txCtl :: Signal domDDR Bit
     txCtl = oddrx1f txClk rst txErr txEn
     txData :: Signal domDDR (BitVector 4)
     txData = oddrx1f txClk rst data1 data2
-    
+
     -- define txdelay
+    txdelay :: Signal domDDR a -> Signal domDDR a
     txdelay = delayg delay
 
 
@@ -94,4 +97,3 @@ rgmiiReceiver channel delay = macInput
     -- rgmii component -> send data to mac when rxDv is high
     macInput :: Signal dom (Maybe (BitVector 8))
     macInput = mux (bitToBool <$> ethRxDv) (fmap Just $ (++#) <$> ethRxData1 <*> ethRxData2) (pure Nothing)
-

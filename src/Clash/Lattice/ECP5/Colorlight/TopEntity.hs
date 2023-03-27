@@ -1,11 +1,14 @@
 module Clash.Lattice.ECP5.Colorlight.TopEntity ( topEntity ) where
 
 import Clash.Annotations.TH
+import Clash.Cores.Ethernet.RGMII
+    ( RGMIIRXChannel(..),
+    RGMIITXChannel(..), rgmiiReceiver,
+    rgmiiSender )
 import Clash.Explicit.Prelude
-import Clash.Cores.Ethernet.RGMII (rgmiiReceiver, rgmiiSender, RGMIIRXChannel, RGMIITXChannel)
-import Clash.Signal ( exposeClockResetEnable )
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
+import Clash.Signal ( exposeClockResetEnable )
 
 import Clash.Cores.UART
 
@@ -69,10 +72,11 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0_rx eth1_rx =
 
     onoff = register clk50 rst50 en50 0 $ fmap complement onoff
 
-    {- ETH0 ~ RGMII SETUP -}    
+    {- ETH0 ~ RGMII SETUP -}
+    eth0Txclk = rgmii_rx_clk eth0_rx
     macInput = rgmiiReceiver eth0_rx (SNat @80)
     eth0Tx = rgmiiSender eth0Txclk resetGen enableGen (SNat @0) macOutput
-    
+
     {- SETUP MAC LAYER -}
     macOutput = macInput
 
