@@ -105,5 +105,29 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0_rx eth1_rx =
           , hub_data = pure 0
           }
       )
+  in
+    TopEntityOutputs { uart_tx             = uartTxBit
+                     , sdram_clock        = clk50
+                     , sdram_a            = pure 0
+                     , sdram_we_n         = pure 1
+                     , sdram_ras_n        = pure 1
+                     , sdram_cas_n        = pure 1
+                     , sdram_ba           = pure 0
+                     , sdram_dq           = dq_out
+                     , eth_mdio           = mdio_out
+                     , eth_mdc            = pure 0
+                     , eth_rst_n          = pure 1
+                     , eth0_tx_clk        = _eth0RxClk
+                     , eth0_tx_ctl        = pure 0
+                     , eth0_tx_data       = pure 0
+                     , eth1_tx_clk        = _eth1RxClk
+                     , eth1_tx_ctl        = pure 0
+                     , eth1_tx_data       = pure 0
+                     , hub_clk            = pure 0
+                     , hub_line_select    = pure 0
+                     , hub_latch          = pure 0
+                     , hub_output_enable  = pure 0
+                     , hub_data           = pure 0
+                     }
 
 makeTopEntity 'topEntity
