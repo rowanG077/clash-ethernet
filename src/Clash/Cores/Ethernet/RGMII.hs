@@ -48,9 +48,15 @@ rgmiiSender txClk rst en delay input = RGMIITXChannel
 
     -- multiplex signals
     txCtl :: Signal domDDR Bit
-    txCtl = oddrx1f txClk rst txErr txEn
+    txCtl = oddrx1f txClk rst txEn txCtlFalling
+        where
+            -- The TXCTL signal at the falling edge is the XOR of TXEN and TXERR
+            -- meaning that TXERR is the XOR of it and TXEN.
+            -- See RGMII interface documentation.
+            txCtlFalling = xor <$> txEn <*> txErr
     txData :: Signal domDDR (BitVector 4)
-    txData = oddrx1f txClk rst data1 data2
+    -- LSB first! See RGMII interface documentation.
+    txData = oddrx1f txClk rst data2 data1
 
     -- define txdelay
     txdelay :: Signal domDDR a -> Signal domDDR a
@@ -90,9 +96,16 @@ rgmiiReceiver channel delay = macInput
 
     -- demultiplex signal
     ethRxErr, ethRxDv :: Signal dom Bit
-    (ethRxErr, ethRxDv) = unbundle $ iddrx1f ethRxClk resetGen ethRxCtl
+    (ethRxErr, ethRxDv) = unbundle $ fmap handleCtl $ iddrx1f ethRxClk resetGen ethRxCtl
+        where
+            -- The RXCTL signal at the falling edge is the XOR of RXDV and RXERR
+            -- meaning that RXERR is the XOR of it and RXDV.
+            -- See RGMII interface documentation.
+            handleCtl :: (Bit, Bit) -> (Bit, Bit)
+            handleCtl (dv,err) = (dv, dv `xor` err)
     ethRxData1, ethRxData2 :: Signal dom (BitVector 4)
-    (ethRxData1, ethRxData2) = unbundle $ iddrx1f ethRxClk resetGen ethRxData
+    -- LSB first! See RGMII interface documentation.
+    (ethRxData2, ethRxData1) = unbundle $ iddrx1f ethRxClk resetGen ethRxData
 
     -- rgmii component -> send data to mac when rxDv is high
     macInput :: Signal dom (Maybe (BitVector 8))
