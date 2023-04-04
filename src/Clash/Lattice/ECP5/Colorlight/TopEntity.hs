@@ -1,14 +1,15 @@
+{-# LANGUAGE NumericUnderscores #-}
+
 module Clash.Lattice.ECP5.Colorlight.TopEntity ( topEntity ) where
 
 import Clash.Annotations.TH
+import Clash.Cores.Ethernet.Frame ( sendFrameOnPulse )
 import Clash.Cores.Ethernet.RGMII
-    ( RGMIIRXChannel(..),
-    RGMIITXChannel(..), rgmiiReceiver,
-    rgmiiSender )
+    ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender )
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
-import Clash.Signal ( exposeClockResetEnable )
+import Clash.Signal ( exposeClockResetEnable, hideClockResetEnable )
 
 import Clash.Cores.UART
 
@@ -77,8 +78,16 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0_rx eth1_rx =
     macInput = rgmiiReceiver eth0_rx (SNat @80)
     eth0Tx = rgmiiSender eth0Txclk resetGen enableGen (SNat @0) macOutput
 
+    {- ETH1 ~ RGMII SETUP -}
+    eth1Txclk = rgmii_rx_clk eth1_rx
+    macInput1 = rgmiiReceiver eth1_rx (SNat @80)
+    eth1Tx = rgmiiSender eth1Txclk resetGen enableGen (SNat @0) macOutput1
+
     {- SETUP MAC LAYER -}
-    macOutput = macInput
+    -- macOutput = macInput
+    -- macOutput1 = macInput1
+    macOutput = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 1_000)) eth0Txclk resetGen enableGen
+    macOutput1 = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 1_000)) eth1Txclk resetGen enableGen
 
     in
       ( uartTxBit
@@ -96,11 +105,7 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0_rx eth1_rx =
           , mdio_mdc = pure 0
           }
       , eth0Tx
-      , RGMIITXChannel  -- eth1
-          { rgmii_tx_clk = pure 0
-          , rgmii_tx_ctl = pure 0
-          , rgmii_tx_data = pure 0
-          }
+      , eth1Tx
       , HubOut
           { hub_clk = pure 0
           , hub_line_select = pure 0
