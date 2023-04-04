@@ -95,8 +95,8 @@ rgmiiReceiver channel delay = macInput
     ethRxData = rxdelay _ethRxData
 
     -- demultiplex signal
-    ethRxErr, ethRxDv :: Signal dom Bit
-    (ethRxErr, ethRxDv) = unbundle $ fmap handleCtl $ iddrx1f ethRxClk resetGen ethRxCtl
+    ethRxDv, ethRxErr :: Signal dom Bit
+    (ethRxDv, ethRxErr) = unbundle $ fmap handleCtl $ iddrx1f ethRxClk resetGen ethRxCtl
         where
             -- The RXCTL signal at the falling edge is the XOR of RXDV and RXERR
             -- meaning that RXERR is the XOR of it and RXDV.
