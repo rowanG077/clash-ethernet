@@ -88,27 +88,8 @@ topEntity clk25 uartRxBit dq_in mdio_in eth0_rx eth1_rx =
     eth1Tx = rgmiiSender eth1Txclk resetGen enableGen (SNat @0) macOutput1
 
     {- SETUP MAC LAYER -}
-    -- macOutput = macInput
-    -- macOutput1 = macInput1
-    -- macOutput = exposeClockResetEnable srcAddressChanger eth0Txclk resetGen enableGen $ macInput
-    -- macOutput1 = exposeClockResetEnable srcAddressChanger eth1Txclk resetGen enableGen $ macInput1
-    macOutput = exposeClockResetEnable (sendFrameOnPulse (hideClockResetEnable riseEvery (SNat :: SNat 1_000)) $ macInput) eth0Txclk resetGen enableGen
-    macOutput1 = exposeClockResetEnable (sendFrameOnPulse (hideClockResetEnable riseEvery (SNat :: SNat 1_000)) $ macInput1) eth1Txclk resetGen enableGen
-
-    srcAddressChanger :: forall dom . I.HiddenClockResetEnable dom => Signal dom (Maybe (BitVector 8)) -> Signal dom (Maybe (BitVector 8))
-    srcAddressChanger inp = fmap change_byte $ bundle (inp, counter)
-            where
-                change_byte :: (Maybe (BitVector 8), Unsigned 16) -> (Maybe (BitVector 8))
-                change_byte (i,18) = fmap (xor 0b1000_0000) i
-                change_byte (i,19) = fmap (xor 0b1) i
-                change_byte (i,_)  = i
-
-                counter :: Signal dom (Unsigned 16)
-                counter = (I.register) 0 (inc <$> bundle (counter, inp))
-                    where
-                        inc (i,p)
-                            | isNothing p = 0
-                            | otherwise = i+1
+    macOutput = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 125_000_000)) eth0Txclk resetGen enableGen
+    macOutput1 = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 125_000_000)) eth1Txclk resetGen enableGen
 
     in
       ( uartTxBit
