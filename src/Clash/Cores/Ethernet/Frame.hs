@@ -1,4 +1,6 @@
-module Clash.Cores.Ethernet.Frame (sendFrameOnPulse, testFrame) where
+{-# LANGUAGE NumericUnderscores #-}
+
+module Clash.Cores.Ethernet.Frame (sendFrameOnPulse, testFrame, sendTestFramePerSecond) where
 
 import Clash.Prelude
 
@@ -62,15 +64,46 @@ sendFrameOnPulse inp = liftA2 output counter mem
                     | otherwise = 0
 
         initialState :: Vec 72 (BitVector 8)
-        -- initialState = testFrame
-        initialState = createStaticFrame srcMAC broadcastMAC type_ipv4 payload
-            where
-                -- destMAC = replicate d6 0b1
-                broadcastMAC = replicate d6 0xff
-                srcMAC = replicate d6 0x03
-                type_ipv4 = 0x0800
-                payload = 0x42 :> replicate d45 0x00
+        initialState = testFrame
+        -- initialState = createStaticFrame srcMAC broadcastMAC type_ipv4 payload
+            -- where
+                -- -- destMAC = replicate d6 0b1
+                -- broadcastMAC = replicate d6 0xff
+                -- srcMAC = replicate d6 0x03
+                -- type_ipv4 = 0x0800
+                -- payload = 0x42 :> replicate d45 0x00
 
+        mem = blockRam initialState readAddr write
+        readAddr :: Signal dom (BitVector 32)
+        readAddr = pack <$> counter
+        write = pure Nothing
+
+sendTestFramePerSecond :: forall dom . HiddenClockResetEnable dom
+    => Signal dom Bool
+    -> Signal dom (Maybe (Vec 4 Byte, Index 4))
+sendTestFramePerSecond fullFlag = output <$> counter <*> mem <*> fullFlag
+    where
+        output :: Unsigned 32 -> Vec 4 Byte -> Bool -> Maybe (Vec 4 Byte, Index 4)
+        output _ _ True = Nothing
+        output 0 _ _ = Nothing
+        output _ vec False = Just (vec, 3)
+
+        pulse :: Signal dom Bool
+        -- pulse = riseEvery (SNat :: SNat 50_000_000)
+        pulse = riseEvery (SNat :: SNat 30)
+        frame_length = 18
+        counter :: Signal dom (Unsigned 32)
+        counter = register 0 (inc <$> bundle (counter, pulse, fullFlag))
+            where
+                inc (i,p,f)
+                    | i == 0 && not p = 0
+                    | i == 0 && p = 1
+                    | i < frame_length && not f = i+1
+                    | i < frame_length && f = i
+                    | otherwise = 0
+
+        initialState :: Vec 18 (Vec 4 Byte)
+        initialState = unpack $ pack testFrame
         mem = blockRam initialState readAddr write
         readAddr :: Signal dom (BitVector 32)
         readAddr = pack <$> counter
