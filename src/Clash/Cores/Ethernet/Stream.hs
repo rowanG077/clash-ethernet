@@ -1,6 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond) where
+module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, withCircuit, voidConst) where
 
 import qualified Clash.Prelude as C
 import Clash.Prelude
@@ -27,6 +27,25 @@ type AxiSingleStreamFwd = Maybe (Axi4StreamM2S ('Axi4StreamConfig 1 0 0) UserTyp
 -- | The config for an Axi4Stream tagged with an eth_type as destination
 type AxiConfigTagged = 'Axi4StreamConfig 4 0 16
 
+voidConst :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) ()
+voidConst = Circuit $ \(_,_) -> (C.pure Axi4StreamS2M { _tready = True },())
+
+withCircuit :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom) -> Signal dom (Maybe (BitVector 8)) -> Signal dom (Maybe (BitVector 8))
+withCircuit circuit input = fromAxi <$> axiOutput where
+    (_, axiOutput) = toSignals circuit (fmap toAxi <$> input, C.pure Axi4StreamS2M { _tready = True })
+    fromAxi :: AxiSingleStreamFwd -> Maybe (BitVector 8)
+    fromAxi axiInp = case axiInp of
+               Just axi -> if head (_tkeep axi) then Just $ unpack $ pack $ _tdata axi else Nothing
+               Nothing -> Nothing
+    toAxi :: BitVector 8 -> Axi4StreamM2S ('Axi4StreamConfig 1 0 0) ()
+    toAxi bv = Axi4StreamM2S { _tdata = singleton $ unpack bv
+                            , _tkeep = singleton True
+                            , _tstrb = singleton False
+                            , _tlast = False
+                            , _tuser = ()
+                            , _tid = 0
+                            , _tdest = 0
+                            }
 
 mealyToCircuit :: C.HiddenClockResetEnable dom
     => NFDataX a
@@ -70,7 +89,7 @@ ifgEnforcer = mealyToCircuit machineAsFunction 0 where
     where
       -- If this was the last byte of the frame, then skip 12 cycles for the Inter Frame Gap
       newCounter = if maybe False _tlast inp then 12 else 0
-  machineAsFunction n (inp, recvACK) = (n-1, (Axi4StreamS2M { _tready = False }, Nothing))
+  machineAsFunction n (_, _) = (n-1, (Axi4StreamS2M { _tready = False }, Nothing))
 
 
 streamTestFramePerSecond :: C.HiddenClockResetEnable dom => Circuit () (AxiStream dom)

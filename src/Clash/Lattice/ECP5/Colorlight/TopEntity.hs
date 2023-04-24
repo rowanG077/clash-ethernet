@@ -8,13 +8,13 @@ import Clash.Annotations.TH
 import Clash.Cores.Ethernet.Frame ( sendFrameOnPulse, sendTestFramePerSecond )
 import Clash.Cores.Ethernet.RGMII
     ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender )
+import Clash.Cores.Ethernet.Stream
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CDC ( writeCDC )
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
-import Clash.Signal ( exposeClockResetEnable, hideClockResetEnable )
-
-import qualified Clash.Prelude as I
+import Clash.Signal ( exposeClockResetEnable, hideClockResetEnable, withClockResetEnable )
+import Protocols
 
 import Clash.Cores.Ethernet.MDIO ( mdioComponent )
 import Clash.Lattice.ECP5.Colorlight.Bridge ( uartToMdioBridge )
@@ -93,10 +93,8 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
     eth1Tx = rgmiiSender eth1Txclk resetGen enableGen (SNat @0) macOutput1
 
     {- SETUP MAC LAYER -}
-    (macOutput, fullFlag) = writeCDC eth0Txclk clk50 resetGen rst50 enableGen en50 $ exposeClockResetEnable (sendTestFramePerSecond fullFlag) clk50 rst50 en50
-    (macOutput1, fullFlag1) = writeCDC eth1Txclk clk50 resetGen rst50 enableGen en50 $ exposeClockResetEnable (sendTestFramePerSecond fullFlag1) clk50 rst50 en50
-    -- macOutput = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 125_000_000)) eth0Txclk resetGen enableGen
-    -- macOutput1 = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 125_000_000)) eth1Txclk resetGen enableGen
+    macOutput = withClockResetEnable eth0Txclk resetGen enableGen $ withCircuit (ifgEnforcer <| preambleInserter <| undefined <| streamTestFramePerSecond <| voidConst) macInput
+    macOutput1 = withClockResetEnable eth1Txclk resetGen enableGen $ withCircuit (undefined <| streamTestFramePerSecond <| voidConst) macInput1
 
     in
       ( uartTxBit
