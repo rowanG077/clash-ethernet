@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 
-module Clash.Lattice.ECP5.Colorlight.CDC ( circuitCDC ) where
+module Clash.Cores.Ethernet.CDC ( circuitCDC ) where
 
 import Clash.Prelude
 import Clash.Explicit.Synchronizer ( asyncFIFOSynchronizer )

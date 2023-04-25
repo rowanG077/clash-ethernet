@@ -5,12 +5,12 @@ module Clash.Lattice.ECP5.Colorlight.TopEntity ( topEntity ) where
 import Data.Maybe ( isNothing )
 
 import Clash.Annotations.TH
+import Clash.Cores.Ethernet.CDC ( circuitCDC )
 import Clash.Cores.Ethernet.Frame ( sendFrameOnPulse, sendTestFramePerSecond )
 import Clash.Cores.Ethernet.RGMII
     ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender )
 import Clash.Cores.Ethernet.Stream
 import Clash.Explicit.Prelude
-import Clash.Lattice.ECP5.Colorlight.CDC ( writeCDC )
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
 import Clash.Signal ( exposeClockResetEnable, hideClockResetEnable, withClockResetEnable )
