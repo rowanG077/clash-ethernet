@@ -29,7 +29,7 @@ type AxiConfigTagged = 'Axi4StreamConfig 4 0 16
 
 withCircuit :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom) -> Signal dom (Maybe (BitVector 8)) -> Signal dom (Maybe (BitVector 8))
 withCircuit circuit input = fromAxi <$> axiOutput where
-    (_, axiOutput) = toSignals circuit (fmap toAxi <$> input, C.pure Axi4StreamS2M { _tready = True })
+    (_, axiOutput) = toSignals circuit (fmap toAxi <$> input, C.pure $ ack True)
     fromAxi :: AxiSingleStreamFwd -> Maybe (BitVector 8)
     fromAxi axiInp = case axiInp of
                Just axi -> if head (_tkeep axi) then Just $ unpack $ pack $ _tdata axi else Nothing
@@ -43,6 +43,10 @@ withCircuit circuit input = fromAxi <$> axiOutput where
                             , _tid = 0
                             , _tdest = 0
                             }
+
+-- | Convenience function to denote an ACK for an Axi4Stream succinctly
+ack :: Bool -> Axi4StreamS2M
+ack b = Axi4StreamS2M { _tready = b }
 
 mealyToCircuit :: C.HiddenClockResetEnable dom
     => NFDataX a
@@ -65,10 +69,9 @@ preambleInserter = mealyToCircuit machineAsFunction 0 where
       -- If this was the last byte of the frame or not part of a frame,
       -- then a preamble should be inserted whenever a new frame begins.
       newCounter = if maybe True _tlast inp then 8 else 0
-  machineAsFunction n (_, recvACK) = (nextStep, (sendACK, Just out))
+  machineAsFunction n (_, recvACK) = (nextStep, (ack False, Just out))
             where
                 nextStep = if _tready recvACK then n-1 else n
-                sendACK = Axi4StreamS2M { _tready = False }
                 out = Axi4StreamM2S { _tdata = singleton $ if n == 1 then 0xd5 else 0x55
                                     , _tkeep = singleton True
                                     , _tstrb = singleton False
@@ -86,7 +89,7 @@ ifgEnforcer = mealyToCircuit machineAsFunction 0 where
     where
       -- If this was the last byte of the frame, then skip 12 cycles for the Inter Frame Gap
       newCounter = if maybe False _tlast inp then 12 else 0
-  machineAsFunction n (_, _) = (n-1, (Axi4StreamS2M { _tready = False }, Nothing))
+  machineAsFunction n (_, _) = (n-1, (ack False, Nothing))
 
 
 streamTestFramePerSecond :: C.HiddenClockResetEnable dom => Circuit () (AxiStream dom)
