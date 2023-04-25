@@ -3,6 +3,7 @@
 module Clash.Cores.Ethernet.Utils ( downconverter ) where
 
 import Data.Maybe ( isNothing, isJust )
+import Data.Tuple ( swap )
 import Clash.Prelude
 import Protocols
 import Protocols.Axi4.Stream
@@ -19,9 +20,10 @@ downconverter :: forall (dom       :: Domain)
       , NFDataX userType, DataWidth conf2 ~ 1)
    => ( Signal dom (Maybe (Axi4StreamM2S conf1 userType))
       , Signal dom Axi4StreamS2M)
-   -> ( Signal dom (Maybe (Axi4StreamM2S conf2 userType))
-      , Signal dom Axi4StreamS2M)
-downconverter ipt = unbundle $ mealy downconverter' (0, Nothing) $ bundle ipt
+   -> ( Signal dom Axi4StreamS2M
+      , Signal dom (Maybe (Axi4StreamM2S conf2 userType))
+      )
+downconverter ipt = swap $ unbundle $ mealy downconverter' (0, Nothing) $ bundle ipt
 
 downconverter' :: forall (conf1     :: Axi4StreamConfig)
                        (conf2     :: Axi4StreamConfig)

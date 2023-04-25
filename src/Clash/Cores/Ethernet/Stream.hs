@@ -27,7 +27,7 @@ type AxiSingleStreamFwd = Maybe (Axi4StreamM2S ('Axi4StreamConfig 1 0 0) UserTyp
 -- | The config for an Axi4Stream tagged with an eth_type as destination
 type AxiConfigTagged = 'Axi4StreamConfig 4 0 16
 
-withCircuit :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom) -> Signal dom (Maybe (BitVector 8)) -> Signal dom (Maybe (BitVector 8))
+withCircuit :: KnownDomain dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom) -> Signal dom (Maybe (BitVector 8)) -> Signal dom (Maybe (BitVector 8))
 withCircuit circuit input = fromAxi <$> axiOutput where
     (_, axiOutput) = toSignals circuit (fmap toAxi <$> input, C.pure $ ack True)
     fromAxi :: AxiSingleStreamFwd -> Maybe (BitVector 8)
