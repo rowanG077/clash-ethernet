@@ -3,6 +3,7 @@
 module Clash.Lattice.ECP5.Colorlight.TopEntity ( topEntity ) where
 
 import Data.Maybe ( isNothing )
+import Data.Proxy ( Proxy (Proxy) )
 
 import Clash.Annotations.TH
 import Clash.Cores.Ethernet.CDC ( circuitCDC )
@@ -10,11 +11,14 @@ import Clash.Cores.Ethernet.Frame ( sendFrameOnPulse, sendTestFramePerSecond )
 import Clash.Cores.Ethernet.RGMII
     ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender )
 import Clash.Cores.Ethernet.Stream
+
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
 import Clash.Signal ( exposeClockResetEnable, hideClockResetEnable, withClockResetEnable )
+
 import Protocols
+import Protocols.DfConv (void)
 
 import Clash.Cores.Ethernet.MDIO ( mdioComponent )
 import Clash.Lattice.ECP5.Colorlight.Bridge ( uartToMdioBridge )
@@ -93,8 +97,8 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
     eth1Tx = rgmiiSender eth1Txclk resetGen enableGen (SNat @0) macOutput1
 
     {- SETUP MAC LAYER -}
-    macOutput = withClockResetEnable eth0Txclk resetGen enableGen $ withCircuit (ifgEnforcer <| preambleInserter <| undefined <| streamTestFramePerSecond <| voidConst) macInput
-    macOutput1 = withClockResetEnable eth1Txclk resetGen enableGen $ withCircuit (undefined <| streamTestFramePerSecond <| voidConst) macInput1
+    macOutput = withClockResetEnable eth0Txclk resetGen enableGen $ withCircuit (ifgEnforcer <| preambleInserter <| undefined <| streamTestFramePerSecond <| void Proxy) macInput
+    macOutput1 = withClockResetEnable eth1Txclk resetGen enableGen $ withCircuit (undefined <| streamTestFramePerSecond <| void Proxy) macInput1
 
     in
       ( uartTxBit

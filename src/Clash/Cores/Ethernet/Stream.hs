@@ -1,6 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, withCircuit, voidConst) where
+module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, withCircuit) where
 
 import qualified Clash.Prelude as C
 import Clash.Prelude
@@ -26,9 +26,6 @@ type AxiSingleStreamFwd = Maybe (Axi4StreamM2S ('Axi4StreamConfig 1 0 0) UserTyp
 
 -- | The config for an Axi4Stream tagged with an eth_type as destination
 type AxiConfigTagged = 'Axi4StreamConfig 4 0 16
-
-voidConst :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) ()
-voidConst = Circuit $ \(_,_) -> (C.pure Axi4StreamS2M { _tready = True },())
 
 withCircuit :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom) -> Signal dom (Maybe (BitVector 8)) -> Signal dom (Maybe (BitVector 8))
 withCircuit circuit input = fromAxi <$> axiOutput where
