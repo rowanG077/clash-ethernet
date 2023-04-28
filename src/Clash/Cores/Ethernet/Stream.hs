@@ -2,6 +2,8 @@
 
 module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, withCircuit) where
 
+import Data.Maybe (isNothing)
+
 import qualified Clash.Prelude as C
 import Clash.Prelude
 import Protocols
@@ -58,21 +60,31 @@ mealyToCircuit machineAsFunction initialState = Circuit $ circuitFunction where
                   . C.mealy machineAsFunction initialState
                   . C.bundle
 
+-- | Inserts the preamble in front of a packet.
+--
+-- From the moment this circuit starts `Just` receiving data it starts outputting the preamble.
+-- It thus delays the stream by exactly 8 cycles.
 preambleInserter :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom)
-preambleInserter = mealyToCircuit machineAsFunction 0 where
+preambleInserter = mealyToCircuit machineAsFunction 8 where
   -- 0: Just passing messages through like normal
   -- 1: Sending SFD (Start of Frame Delimiter)
-  -- 2-8: Sending normal preamble
+  -- 2-7: Sending normal preamble
+  -- 8: Waiting for beginning of message, if found then start sending preamble
   machineAsFunction :: Index 9 -> (AxiSingleStreamFwd, Axi4StreamS2M) -> (Index 9, (Axi4StreamS2M, AxiSingleStreamFwd))
   machineAsFunction 0 (inp, recvACK) = (newCounter, (recvACK, inp))
     where
       -- If this was the last byte of the frame or not part of a frame,
       -- then a preamble should be inserted whenever a new frame begins.
-      newCounter = if maybe True _tlast inp then 8 else 0
-  machineAsFunction n (_, recvACK) = (nextStep, (ack False, Just out))
+      newCounter = if maybe False _tlast inp then 8 else 0
+  machineAsFunction n (inp, recvACK) = (nextStep, (ack False, out))
             where
-                nextStep = if _tready recvACK then n-1 else n
-                out = Axi4StreamM2S { _tdata = singleton $ if n == 1 then 0xd5 else 0x55
+                nextStep
+                  | isNothing inp = n
+                  | _tready recvACK = n-1
+                  | otherwise = n
+                out
+                  | isNothing inp = Nothing
+                  | otherwise = Just Axi4StreamM2S { _tdata = singleton $ if n == 1 then 0xd5 else 0x55
                                     , _tkeep = singleton True
                                     , _tstrb = singleton False
                                     , _tlast = False
@@ -96,8 +108,8 @@ streamTestFramePerSecond :: C.HiddenClockResetEnable dom => Circuit () (AxiStrea
 streamTestFramePerSecond = Circuit $ circuitFunction where
   circuitFunction ((), recvACK) = ((), out) where
     -- initialize bram
-    brContent :: Vec 18 (Vec 4 Byte)
-    brContent = unpack $ pack testFrame
+    brContent :: Vec 16 (Vec 4 Byte)
+    brContent = unpack $ pack $ dropI testFrame
     brRead = C.blockRam brContent brReadAddr brWrite
     brWrite = C.pure Nothing
 
@@ -114,13 +126,13 @@ streamTestFramePerSecond = Circuit $ circuitFunction where
         -- adjust blockram read address
         rAddr1
           | rAddr0 > 50_000_000 = 0
-          | _tready popped || rAddr0 >= 18 = rAddr0+1
+          | _tready popped || rAddr0 >= 16 = rAddr0+1
           | otherwise = rAddr0
         -- return our new state and outputs
-        otpDat = if rAddr0 < 18 then Just Axi4StreamM2S { _tdata = brRead0
+        otpDat = if rAddr0 < 16 then Just Axi4StreamM2S { _tdata = brRead0
                                , _tkeep = replicate d4 True
                                , _tstrb = replicate d4 False
-                               , _tlast = rAddr0 == 17
+                               , _tlast = rAddr0 == 15
                                , _tuser = ()
                                , _tid = 0
                                , _tdest = 0

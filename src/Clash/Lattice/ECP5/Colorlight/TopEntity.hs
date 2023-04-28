@@ -100,7 +100,7 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
     {- SETUP MAC LAYER -}
     withEth = withClockResetEnable eth0Txclk resetGen enableGen
     with50 = withClockResetEnable clk50 rst50 en50
-    macOutput = withCircuit (withEth (ifgEnforcer <| Circuit downconverter) <| circuitTmp clk50 eth0Txclk rst50 resetGen en50 enableGen <| with50 (streamTestFramePerSecond <| void Proxy) <| circuitTmp eth0Txclk clk50 resetGen rst50 enableGen en50) macInput
+    macOutput = withCircuit (withEth (ifgEnforcer <| preambleInserter <| Circuit downconverter) <| circuitTmp clk50 eth0Txclk rst50 resetGen en50 enableGen <| with50 (streamTestFramePerSecond <| void Proxy) <| circuitTmp eth0Txclk clk50 resetGen rst50 enableGen en50) macInput
     macOutput1 = withClockResetEnable eth1Txclk resetGen enableGen $ withCircuit (undefined <| streamTestFramePerSecond <| void Proxy) macInput1
 
     in
