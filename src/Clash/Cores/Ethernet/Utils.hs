@@ -44,16 +44,14 @@ downconverter' s@(idx, packet) (m2s, s2m)
     | notReady = (s, (Nothing, notreadyS2M))
     -- | if we are in the initial state we wait for incoming packet
     | idx == 0 && isNothing m2s = (s, (Nothing, readyS2M))
-    | idx == 0 && isJust m2s    = (nextState, (createM2S, notreadyS2M)) -- edge case check
+    | idx == 0 && isJust m2s    = (nextState, (createM2S m2s, readyS2M)) -- edge case check
     -- | we are ready and are not in the initial state -> send packet but dont accept any
-    | idx /= 3                  = (nextState, (createM2S, notreadyS2M))
-    -- | we are ready and are not in the final state -> send packet and accept again
-    | otherwise                 = ((0, Nothing), (createM2S, readyS2M))
+    | otherwise                  = (nextState, (createM2S packet, notreadyS2M))
     where
         notReady = not . _tready $ s2m
         readyS2M = Axi4StreamS2M {_tready = True}
         notreadyS2M = Axi4StreamS2M {_tready = False}
-        createM2S = creator <$> packet
+        createM2S p = creator <$> p
             where  creator p = Axi4StreamM2S {
                         _tdata = singleton . (!! idx) . _tdata $ p
                         , _tkeep = singleton . (!! idx) . _tkeep $ p
@@ -71,9 +69,9 @@ downconverter' s@(idx, packet) (m2s, s2m)
                             else True
         nextState
             | isLast = (0, packet)
-            | idx == 0 = (0, m2s)
+            | idx == 0 = (1, m2s)
             | idx < 3 = (idx + 1, packet)
-            | otherwise = (0, packet)
+            | otherwise = (0, Nothing)
 
 
 -- upconverter :: forall (dom        :: Domain)
