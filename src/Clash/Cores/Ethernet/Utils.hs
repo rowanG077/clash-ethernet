@@ -40,16 +40,11 @@ downconverter' :: forall (conf1     :: Axi4StreamConfig)
           , Axi4StreamS2M) 
       )
 downconverter' s@(idx, packet) (m2s, s2m)
-    -- | if down stream is not ready we stay in same state 
-    | notReady = (s, (Nothing, notreadyS2M))
     -- | if we are in the initial state we wait for incoming packet
-    | idx == 0 && isNothing m2s = (s, (Nothing, readyS2M))
-    | idx == 0 && isJust m2s    = (nextState, (createM2S m2s, readyS2M)) -- edge case check
+    | idx == 0  = (nextState, (createM2S m2s, s2m))
     -- | we are ready and are not in the initial state -> send packet but dont accept any
-    | otherwise                  = (nextState, (createM2S packet, notreadyS2M))
+    | otherwise = (nextState, (createM2S packet, notreadyS2M))
     where
-        notReady = not . _tready $ s2m
-        readyS2M = Axi4StreamS2M {_tready = True}
         notreadyS2M = Axi4StreamS2M {_tready = False}
         createM2S p = creator <$> p
             where  creator p = Axi4StreamM2S {
@@ -62,14 +57,16 @@ downconverter' s@(idx, packet) (m2s, s2m)
                         , _tuser = _tuser p
                    }
         isLast = maybe False _tlast packet && maybe False ((go 3) . _tkeep) packet
-            where 
-                go :: Index 4 -> Vec 4 Bool -> Bool 
+            where
+                go :: Index 4 -> Vec 4 Bool -> Bool
                 go x ls  = if x > idx
                             then (not . (!! x) $ ls) && go (x-1) ls
                             else True
         nextState
+            | not $ _tready s2m = s -- if down stream is not ready we stay in same state
             | isLast = (0, packet)
-            | idx == 0 = (1, m2s)
+            | idx == 0 && isJust m2s = (1, m2s)
+            | idx == 0 && isNothing m2s = s
             | idx < 3 = (idx + 1, packet)
             | otherwise = (0, Nothing)
 
