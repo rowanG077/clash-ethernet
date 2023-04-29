@@ -34,8 +34,6 @@ circuitCDC :: forall (wdom        :: Domain)
   -> Enable wdom
   -> Enable rdom
   -> Circuit (Axi4Stream wdom conf userType) (Axi4Stream rdom conf userType)
-  -- (Signal wdom (Maybe (Axi4StreamM2S conf userType)), Signal rdom (Axi4StreamS2M))
-  -- -> ( Signal wdom (Axi4StreamS2M) , Signal rdom (Maybe (Axi4StreamM2S conf userType)))
 circuitCDC wClk rClk wRst rRst wEn rEn = Circuit circuitFunction where
   circuitFunction (m2s, s2m) = (otp_s2m', otp_m2s') where
     (m2s', empty, full) = asyncFIFOSynchronizer d3 wClk rClk wRst rRst wEn rEn readReq m2s
