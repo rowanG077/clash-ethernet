@@ -7,6 +7,7 @@ import Data.Tuple ( swap )
 import Clash.Prelude
 import Protocols
 import Protocols.Axi4.Stream
+import Clash.Cores.Ethernet.Stream ( mealyToCircuit )
 
 
 downconverter :: forall (dom       :: Domain)
@@ -18,12 +19,8 @@ downconverter :: forall (dom       :: Domain)
       , KnownAxi4StreamConfig conf2
       , DataWidth conf1 ~ 4, IdWidth conf1 ~ IdWidth conf2, DestWidth conf1 ~ DestWidth conf2
       , NFDataX userType, DataWidth conf2 ~ 1)
-   => ( Signal dom (Maybe (Axi4StreamM2S conf1 userType))
-      , Signal dom Axi4StreamS2M)
-   -> ( Signal dom Axi4StreamS2M
-      , Signal dom (Maybe (Axi4StreamM2S conf2 userType))
-      )
-downconverter ipt = swap $ unbundle $ mealy downconverter' (0, Nothing) $ bundle ipt
+   => Circuit (Axi4Stream dom conf1 userType) (Axi4Stream dom conf2 userType)
+downconverter = mealyToCircuit downconverter' (0, Nothing)
 
 downconverter' :: forall (conf1     :: Axi4StreamConfig)
                        (conf2     :: Axi4StreamConfig)
@@ -31,19 +28,18 @@ downconverter' :: forall (conf1     :: Axi4StreamConfig)
     . ( KnownAxi4StreamConfig conf1
       , KnownAxi4StreamConfig conf2
       , DataWidth conf1 ~ 4, IdWidth conf1 ~ IdWidth conf2, DestWidth conf1 ~ DestWidth conf2
-      , NFDataX userType, DataWidth conf2 ~ 1 ) 
-   => ( Index 4, Maybe (Axi4StreamM2S conf1 userType) ) 
+      , NFDataX userType, DataWidth conf2 ~ 1 )
+   => ( Index 4, Maybe (Axi4StreamM2S conf1 userType) )
    -> ( (Maybe (Axi4StreamM2S conf1 userType))
         , Axi4StreamS2M )
    -> ( ( Index 4, Maybe(Axi4StreamM2S conf1 userType) )
-        , ( (Maybe (Axi4StreamM2S conf2 userType))
-          , Axi4StreamS2M) 
+        , ( Axi4StreamS2M, Maybe (Axi4StreamM2S conf2 userType))
       )
 downconverter' s@(idx, packet) (m2s, s2m)
     -- | if we are in the initial state we wait for incoming packet
-    | idx == 0  = (nextState, (createM2S m2s, s2m))
+    | idx == 0  = (nextState, (s2m, createM2S m2s))
     -- | we are ready and are not in the initial state -> send packet but dont accept any
-    | otherwise = (nextState, (createM2S packet, notreadyS2M))
+    | otherwise = (nextState, (notreadyS2M, createM2S packet))
     where
         notreadyS2M = Axi4StreamS2M {_tready = False}
         createM2S p = creator <$> p

@@ -1,6 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, withCircuit) where
+module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, withCircuit, mealyToCircuit) where
 
 import Data.Maybe (isNothing)
 
@@ -52,9 +52,9 @@ ack b = Axi4StreamS2M { _tready = b }
 
 mealyToCircuit :: C.HiddenClockResetEnable dom
     => NFDataX a
-    => (a -> (Maybe (Axi4StreamM2S conf user), Axi4StreamS2M) -> (a, (Axi4StreamS2M, Maybe (Axi4StreamM2S  conf user))))
+    => (a -> (Maybe (Axi4StreamM2S conf1 user), Axi4StreamS2M) -> (a, (Axi4StreamS2M, Maybe (Axi4StreamM2S conf2 user))))
     -> a
-    -> Circuit (Axi4Stream dom conf user) (Axi4Stream dom conf user)
+    -> Circuit (Axi4Stream dom conf1 user) (Axi4Stream dom conf2 user)
 mealyToCircuit machineAsFunction initialState = Circuit $ circuitFunction where
   circuitFunction = C.unbundle
                   . C.mealy machineAsFunction initialState
