@@ -1,6 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, withCircuit, mealyToCircuit) where
+module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, mealyToCircuit, AxiStream, AxiSingleStream) where
 
 import Data.Maybe (isNothing)
 
@@ -28,23 +28,6 @@ type AxiSingleStreamFwd = Maybe (Axi4StreamM2S ('Axi4StreamConfig 1 0 0) UserTyp
 
 -- | The config for an Axi4Stream tagged with an eth_type as destination
 type AxiConfigTagged = 'Axi4StreamConfig 4 0 16
-
-withCircuit :: KnownDomain dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom) -> Signal dom (Maybe (BitVector 8)) -> Signal dom (Maybe (BitVector 8))
-withCircuit circuit input = fromAxi <$> axiOutput where
-    (_, axiOutput) = toSignals circuit (fmap toAxi <$> input, C.pure $ ack True)
-    fromAxi :: AxiSingleStreamFwd -> Maybe (BitVector 8)
-    fromAxi axiInp = case axiInp of
-               Just axi -> if head (_tkeep axi) then Just $ unpack $ pack $ _tdata axi else Nothing
-               Nothing -> Nothing
-    toAxi :: BitVector 8 -> Axi4StreamM2S ('Axi4StreamConfig 1 0 0) ()
-    toAxi bv = Axi4StreamM2S { _tdata = singleton $ unpack bv
-                            , _tkeep = singleton True
-                            , _tstrb = singleton False
-                            , _tlast = False
-                            , _tuser = ()
-                            , _tid = 0
-                            , _tdest = 0
-                            }
 
 -- | Convenience function to denote an ACK for an Axi4Stream succinctly
 ack :: Bool -> Axi4StreamS2M

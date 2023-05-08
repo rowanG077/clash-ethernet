@@ -6,22 +6,20 @@ import Data.Maybe ( isNothing )
 import Data.Proxy ( Proxy (Proxy) )
 
 import Clash.Annotations.TH
-import Clash.Cores.Ethernet.CDC ( circuitCDC )
-import Clash.Cores.Ethernet.Frame ( sendFrameOnPulse, sendTestFramePerSecond )
+import Clash.Cores.Ethernet.MAC ( rxMACCircuit, txMACCircuit )
 import Clash.Cores.Ethernet.RGMII
-    ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender )
-import Clash.Cores.Ethernet.Stream
+    ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender, RGMIIOut )
+import Clash.Cores.Ethernet.Stream ( AxiStream, streamTestFramePerSecond )
 
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
-import Clash.Signal ( exposeClockResetEnable, hideClockResetEnable, withClockResetEnable )
+import Clash.Signal ( exposeClockResetEnable, withClockResetEnable )
 
 import Protocols
 import Protocols.DfConv (void)
 
 import Clash.Cores.Ethernet.MDIO ( mdioComponent )
-import Clash.Cores.Ethernet.Utils ( downconverter )
 import Clash.Lattice.ECP5.Colorlight.Bridge ( uartToMdioBridge )
 
 data SDRAMOut domain = SDRAMOut
@@ -89,19 +87,36 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
 
     {- ETH0 ~ RGMII SETUP -}
     eth0Txclk = rgmii_rx_clk eth0_rx
-    macInput = rgmiiReceiver eth0_rx (SNat @80)
-    eth0Tx = rgmiiSender eth0Txclk resetGen enableGen (SNat @0) macOutput
 
     {- ETH1 ~ RGMII SETUP -}
     eth1Txclk = rgmii_rx_clk eth1_rx
-    macInput1 = rgmiiReceiver eth1_rx (SNat @80)
-    eth1Tx = rgmiiSender eth1Txclk resetGen enableGen (SNat @0) macOutput1
 
     {- SETUP MAC LAYER -}
-    withEth = withClockResetEnable eth0Txclk resetGen enableGen
-    with50 = withClockResetEnable clk50 rst50 en50
-    macOutput = withCircuit (withEth (ifgEnforcer <| preambleInserter <| downconverter) <| circuitCDC clk50 eth0Txclk rst50 resetGen en50 enableGen <| with50 (streamTestFramePerSecond <| void Proxy) <| circuitCDC eth0Txclk clk50 resetGen rst50 enableGen en50) macInput
-    macOutput1 = withClockResetEnable eth1Txclk resetGen enableGen $ withCircuit (undefined <| streamTestFramePerSecond <| void Proxy) macInput1
+    ((), eth0Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
+      where
+        with50 = withClockResetEnable clk50 rst50 en50
+
+        txCirc :: Circuit (AxiStream Dom50) (RGMIIOut DomDDREth0)
+        txCirc = rgmiiSender eth0Txclk resetGen enableGen d0
+              <| txMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
+        rxCirc :: Circuit () (AxiStream Dom50)
+        rxCirc = rxMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
+              <| rgmiiReceiver eth0_rx d80
+        mainLogic :: Circuit (AxiStream Dom50) (AxiStream Dom50)
+        mainLogic = with50 (streamTestFramePerSecond <| void Proxy)
+
+    ((), eth1Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
+      where
+        with50 = withClockResetEnable clk50 rst50 en50
+
+        txCirc :: Circuit (AxiStream Dom50) (RGMIIOut DomDDREth1)
+        txCirc = rgmiiSender eth1Txclk resetGen enableGen d0
+              <| txMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
+        rxCirc :: Circuit () (AxiStream Dom50)
+        rxCirc = rxMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
+              <| rgmiiReceiver eth1_rx d80
+        mainLogic :: Circuit (AxiStream Dom50) (AxiStream Dom50)
+        mainLogic = with50 (streamTestFramePerSecond <| void Proxy)
 
     in
       ( uartTxBit
