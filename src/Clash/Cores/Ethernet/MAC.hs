@@ -6,7 +6,7 @@ import Protocols.Axi4.Stream
 
 import Clash.Cores.Ethernet.CDC ( circuitCDC )
 import Clash.Cores.Ethernet.Utils ( downconverter )
-import Clash.Cores.Ethernet.Stream ( ifgEnforcer, preambleInserter )
+import Clash.Cores.Ethernet.Stream ( ifgEnforcer, preambleInserter, fcsAppender )
 
 type AxiStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 4 0 0) ()
 type AxiSingleStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 1 0 0) ()
@@ -21,7 +21,11 @@ txMACCircuit :: forall (edom        :: Domain)
   -> Reset mdom
   -> Enable mdom
   -> Circuit (AxiStream mdom) (AxiSingleStream edom)
-txMACCircuit ethClk ethRst ethEn clk rst en = withEth $ ifgEnforcer <| preambleInserter <| downconverter <| circuitCDC clk ethClk rst ethRst en ethEn
+txMACCircuit ethClk ethRst ethEn clk rst en = withEth $ ifgEnforcer
+                                                     <| preambleInserter
+                                                     <| fcsAppender
+                                                     <| downconverter
+                                                     <| circuitCDC clk ethClk rst ethRst en ethEn
   where
     withEth = withClockResetEnable ethClk resetGen enableGen
 

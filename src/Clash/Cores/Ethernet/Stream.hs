@@ -1,6 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, mealyToCircuit, AxiStream, AxiSingleStream) where
+module Clash.Cores.Ethernet.Stream (streamTestFramePerSecond, ifgEnforcer, preambleInserter, fcsAppender, mealyToCircuit, AxiStream, AxiSingleStream) where
 
 import Data.Maybe (isNothing)
 
@@ -10,6 +10,7 @@ import Protocols
 import Protocols.Df
 import Protocols.Axi4.Stream
 import Clash.Cores.Ethernet.Frame (testFrame)
+import Clash.Cores.Ethernet.CRC ( CRCState, finish_crc_state, crc_starting_state, upd_crc_state )
 
 -- TODO: Clean up and sort the `type`s here into something comprehensible
 
@@ -87,12 +88,61 @@ ifgEnforcer = mealyToCircuit machineAsFunction 0 where
   machineAsFunction n (_, _) = (n-1, (ack False, Nothing))
 
 
+data FCSState = Accumulating CRCState | Appending (Index 4) (Vec 4 Byte)
+  deriving (Show, Eq, Generic, NFDataX)
+
+-- | Calculates and appends the FCS (checksum) to the frame
+fcsAppender :: C.HiddenClockResetEnable dom => Circuit (AxiSingleStream dom) (AxiSingleStream dom)
+fcsAppender = mealyToCircuit machineAsFunction starting_state where
+  starting_state = Accumulating crc_starting_state
+  reverseEndianness :: forall n . KnownNat n => BitVector n -> BitVector n
+  reverseEndianness bv = pack $ reverse vec
+      where
+        vec :: Vec n Bit
+        vec = unpack bv
+
+  machineAsFunction :: FCSState -> (AxiSingleStreamFwd, Axi4StreamS2M) -> (FCSState, (Axi4StreamS2M, AxiSingleStreamFwd))
+  machineAsFunction (Accumulating s) (Just inp, recvACK) = (newState, (recvACK, out))
+    where
+      -- Always set _tlast to False
+      out = Just Axi4StreamM2S { _tdata = _tdata inp
+                               , _tkeep = _tkeep inp
+                               , _tstrb = _tstrb inp
+                               , _tlast = False
+                               , _tuser = _tuser inp
+                               , _tid = _tid inp
+                               , _tdest = _tdest inp
+                               }
+      -- Update the CRC state with an extra byte of input
+      newCRC = upd_crc_state s (reverseEndianness $ pack $ _tdata inp)
+      newState
+        -- No transmit taking place this cycle, keep in same state
+        | not (_tready recvACK) = Accumulating s
+        -- No transmit taking place this cycle, keep in same state
+        | _tlast inp = Appending 0 (unpack $ finish_crc_state newCRC)
+        | otherwise = Accumulating newCRC
+  machineAsFunction (Appending ind bv) (_, recvACK) = (newState, (ack False, out))
+    where
+      -- NOTE: Take care with ordering!
+      out = Just Axi4StreamM2S { _tdata = singleton $ unpack $ reverseEndianness $ pack $ bv !! ind
+                               , _tkeep = singleton True
+                               , _tstrb = singleton False
+                               , _tlast = ind == 3
+                               , _tuser = ()
+                               , _tid = 0
+                               , _tdest = 0
+                               }
+      newState | not $ _tready recvACK = Appending ind bv
+               | ind == 3 = starting_state
+               | otherwise = Appending (ind+1) bv
+  machineAsFunction s (Nothing, recvACK) = (s, (recvACK, Nothing))
+
 streamTestFramePerSecond :: C.HiddenClockResetEnable dom => Circuit () (AxiStream dom)
 streamTestFramePerSecond = Circuit $ circuitFunction where
   circuitFunction ((), recvACK) = ((), out) where
     -- initialize bram
-    brContent :: Vec 16 (Vec 4 Byte)
-    brContent = unpack $ pack $ dropI testFrame
+    brContent :: Vec 15 (Vec 4 Byte)
+    brContent = takeI $ unpack $ pack $ drop d8 testFrame
     brRead = C.blockRam brContent brReadAddr brWrite
     brWrite = C.pure Nothing
 
@@ -109,13 +159,13 @@ streamTestFramePerSecond = Circuit $ circuitFunction where
         -- adjust blockram read address
         rAddr1
           | rAddr0 > 50_000_000 = 0
-          | _tready popped || rAddr0 >= 16 = rAddr0+1
+          | _tready popped || rAddr0 >= 15 = rAddr0+1
           | otherwise = rAddr0
         -- return our new state and outputs
-        otpDat = if rAddr0 < 16 then Just Axi4StreamM2S { _tdata = brRead0
+        otpDat = if rAddr0 < 15 then Just Axi4StreamM2S { _tdata = brRead0
                                , _tkeep = replicate d4 True
                                , _tstrb = replicate d4 False
-                               , _tlast = rAddr0 == 15
+                               , _tlast = rAddr0 == 14
                                , _tuser = ()
                                , _tid = 0
                                , _tdest = 0
