@@ -20,6 +20,7 @@ import Protocols
 import Protocols.DfConv (void)
 
 import Clash.Cores.Ethernet.MDIO ( mdioComponent )
+import Clash.Cores.Ethernet.Utils ( downconverter, upconverter )
 import Clash.Lattice.ECP5.Colorlight.Bridge ( uartToMdioBridge )
 
 data SDRAMOut domain = SDRAMOut
