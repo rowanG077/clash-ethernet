@@ -6,7 +6,10 @@ import Protocols.Axi4.Stream
 
 import Clash.Cores.Ethernet.CDC ( circuitCDC )
 import Clash.Cores.Ethernet.Utils ( downconverter )
-import Clash.Cores.Ethernet.Stream ( ifgEnforcer, preambleInserter, fcsAppender )
+
+import Clash.Cores.Ethernet.MAC.FCS
+import Clash.Cores.Ethernet.MAC.IFG
+import Clash.Cores.Ethernet.MAC.Preamble
 
 type AxiStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 4 0 0) ()
 type AxiSingleStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 1 0 0) ()

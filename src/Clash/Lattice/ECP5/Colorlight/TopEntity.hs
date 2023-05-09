@@ -9,7 +9,7 @@ import Clash.Annotations.TH
 import Clash.Cores.Ethernet.MAC ( rxMACCircuit, txMACCircuit )
 import Clash.Cores.Ethernet.RGMII
     ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender, RGMIIOut )
-import Clash.Cores.Ethernet.Stream ( AxiStream, streamTestFramePerSecond )
+import Clash.Cores.Ethernet.Stream ( FourByteStream, streamTestFramePerSecond )
 
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
@@ -96,26 +96,26 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
       where
         with50 = withClockResetEnable clk50 rst50 en50
 
-        txCirc :: Circuit (AxiStream Dom50) (RGMIIOut DomDDREth0)
+        txCirc :: Circuit (FourByteStream Dom50) (RGMIIOut DomDDREth0)
         txCirc = rgmiiSender eth0Txclk resetGen enableGen d0
               <| txMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
-        rxCirc :: Circuit () (AxiStream Dom50)
+        rxCirc :: Circuit () (FourByteStream Dom50)
         rxCirc = rxMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
               <| rgmiiReceiver eth0_rx d80
-        mainLogic :: Circuit (AxiStream Dom50) (AxiStream Dom50)
+        mainLogic :: Circuit (FourByteStream Dom50) (FourByteStream Dom50)
         mainLogic = with50 (streamTestFramePerSecond <| void Proxy)
 
     ((), eth1Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
       where
         with50 = withClockResetEnable clk50 rst50 en50
 
-        txCirc :: Circuit (AxiStream Dom50) (RGMIIOut DomDDREth1)
+        txCirc :: Circuit (FourByteStream Dom50) (RGMIIOut DomDDREth1)
         txCirc = rgmiiSender eth1Txclk resetGen enableGen d0
               <| txMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
-        rxCirc :: Circuit () (AxiStream Dom50)
+        rxCirc :: Circuit () (FourByteStream Dom50)
         rxCirc = rxMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
               <| rgmiiReceiver eth1_rx d80
-        mainLogic :: Circuit (AxiStream Dom50) (AxiStream Dom50)
+        mainLogic :: Circuit (FourByteStream Dom50) (FourByteStream Dom50)
         mainLogic = with50 (streamTestFramePerSecond <| void Proxy)
 
     in

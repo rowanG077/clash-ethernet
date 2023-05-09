@@ -7,7 +7,7 @@ import Data.Maybe ( isJust )
 
 import Protocols
 import Protocols.Axi4.Stream
-import Clash.Cores.Ethernet.Stream ( AxiSingleStream )
+import Clash.Cores.Ethernet.Stream ( SingleByteStream )
 
 -- NOTE: make ddrDomain generic -> 2 * ddrDomain frequency = domain frequency
 data RGMIIRXChannel domain ddrDomain = RGMIIRXChannel
@@ -40,7 +40,7 @@ rgmiiSender :: forall dom domDDR delay fPeriod edge reset init polarity . delay 
   -> Enable dom
   -> SNat delay
   -- ^ tx delay needed
-  -> Circuit (AxiSingleStream dom) (RGMIIOut domDDR)
+  -> Circuit (SingleByteStream dom) (RGMIIOut domDDR)
   -- ^ tx channel to the phy
 rgmiiSender txClk rst en delay = Circuit circuitFunction where
     circuitFunction (axiInput,_) = (pure Axi4StreamS2M {_tready = True}, RGMIITXChannel
@@ -82,7 +82,7 @@ rgmiiReceiver :: forall (dom :: Domain) (domDDR :: Domain) delay fPeriod edge re
   -- ^ rx channel from phy
   -> SNat delay
   -- ^ delays
-  -> Circuit () (AxiSingleStream dom)
+  -> Circuit () (SingleByteStream dom)
 rgmiiReceiver channel delay = Circuit $ \_ -> ((), fmap toAxi <$> macInput)
   where
     -- define rxdelay
