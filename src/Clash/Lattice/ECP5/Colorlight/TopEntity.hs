@@ -10,6 +10,8 @@ import Clash.Cores.Ethernet.MAC ( rxMACCircuit, txMACCircuit )
 import Clash.Cores.Ethernet.RGMII
     ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender, RGMIIOut )
 import Clash.Cores.Ethernet.Stream ( FourByteStream, streamTestFramePerSecond )
+import Clash.Cores.Ethernet.MAC.Packetizer
+import Clash.Signal ( HiddenClockResetEnable )
 
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
@@ -17,7 +19,7 @@ import Clash.Lattice.ECP5.Prims
 import Clash.Signal ( exposeClockResetEnable, withClockResetEnable )
 
 import Protocols
-import Protocols.DfConv (void)
+import Protocols.DfConv ( void, fanout )
 
 import Clash.Cores.Ethernet.MDIO ( mdioComponent )
 import Clash.Cores.Ethernet.Utils ( downconverter, upconverter )
@@ -104,7 +106,11 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
         rxCirc = rxMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
               <| rgmiiReceiver eth0_rx d80
         mainLogic :: Circuit (FourByteStream Dom50) (FourByteStream Dom50)
-        mainLogic = with50 (streamTestFramePerSecond <| void Proxy)
+        mainLogic = with50 $ macPacketizer
+                          <| repeatC (streamTestFramePerSecond <| void Proxy)
+                          <| inputFanout
+        inputFanout :: HiddenClockResetEnable dom => Circuit (FourByteStream dom) (Vec 2 (FourByteStream dom))
+        inputFanout = fanout Proxy Proxy
 
     ((), eth1Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
       where
