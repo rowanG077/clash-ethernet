@@ -45,17 +45,16 @@ mealyToCircuit machineAsFunction initialState = Circuit $ circuitFunction where
                   . C.bundle
 
 
-streamTestFramePerSecond :: C.HiddenClockResetEnable dom => Circuit () (FourByteStream dom)
-streamTestFramePerSecond = Circuit $ circuitFunction where
+-- | Continually streams the given header+payload every 50 million clock cycles
+streamTestFramePerSecond :: forall n dom . C.HiddenClockResetEnable dom => Unsigned 32 -> Vec n (Vec 4 Byte) -> Circuit () (FourByteStream dom)
+streamTestFramePerSecond len brContent = Circuit $ circuitFunction where
   circuitFunction ((), recvACK) = ((), out) where
     -- initialize bram
-    brContent :: Vec 15 (Vec 4 Byte)
-    brContent = takeI $ unpack $ pack $ drop d8 testFrame
     brRead = C.blockRam brContent brReadAddr brWrite
     brWrite = C.pure Nothing
 
     -- run the state machine (a mealy machine)
-    initialState = 200
+    initialState = len+1
     (brReadAddr, out)
       = C.unbundle
       $ C.mealy machineAsFunction initialState
@@ -67,13 +66,13 @@ streamTestFramePerSecond = Circuit $ circuitFunction where
         -- adjust blockram read address
         rAddr1
           | rAddr0 > 50_000_000 = 0
-          | _tready popped || rAddr0 >= 15 = rAddr0+1
+          | _tready popped || rAddr0 >= len = rAddr0+1
           | otherwise = rAddr0
         -- return our new state and outputs
-        otpDat = if rAddr0 < 15 then Just Axi4StreamM2S { _tdata = brRead0
+        otpDat = if rAddr0 < len then Just Axi4StreamM2S { _tdata = brRead0
                                , _tkeep = replicate d4 True
                                , _tstrb = replicate d4 False
-                               , _tlast = rAddr0 == 14
+                               , _tlast = rAddr0 == len-1
                                , _tuser = ()
                                , _tid = 0
                                , _tdest = 0
