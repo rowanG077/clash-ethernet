@@ -1,19 +1,20 @@
 module Clash.Cores.Ethernet.MAC ( txMACCircuit, rxMACCircuit ) where
 
+import Clash.Cores.Ethernet.Stream ( SingleByteStream, TaggedStream )
 import Clash.Prelude
 import Protocols
 import Protocols.Axi4.Stream
 
+-- Components
 import Clash.Cores.Ethernet.CDC ( circuitCDC )
-import Clash.Cores.Ethernet.Utils ( downconverter )
-
+import Clash.Cores.Ethernet.MAC.ConstructHeader
+import Clash.Cores.Ethernet.MAC.DeconstructHeader
 import Clash.Cores.Ethernet.MAC.FCS
 import Clash.Cores.Ethernet.MAC.IFG
-import Clash.Cores.Ethernet.MAC.Preamble
 import Clash.Cores.Ethernet.MAC.Padding
-
-type AxiStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 4 0 0) ()
-type AxiSingleStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 1 0 0) ()
+import Clash.Cores.Ethernet.MAC.Preamble
+import Clash.Cores.Ethernet.MAC.PreambleRemover
+import Clash.Cores.Ethernet.Utils ( downconverter, upconverter )
 
 txMACCircuit :: forall (edom        :: Domain)
                        (mdom        :: Domain)
@@ -24,15 +25,16 @@ txMACCircuit :: forall (edom        :: Domain)
   -> Clock mdom
   -> Reset mdom
   -> Enable mdom
-  -> Circuit (AxiStream mdom) (AxiSingleStream edom)
+  -> Circuit (TaggedStream mdom) (SingleByteStream edom)
 txMACCircuit ethClk ethRst ethEn clk rst en = withEth $ ifgEnforcer
                                                      <| preambleInserter
                                                      <| fcsAppender
+                                                     <| constructHeader
                                                      <| payloadPadder
                                                      <| downconverter
                                                      <| circuitCDC clk ethClk rst ethRst en ethEn
   where
-    withEth = withClockResetEnable ethClk resetGen enableGen
+    withEth = withClockResetEnable ethClk ethRst ethEn
 
 rxMACCircuit :: forall (edom        :: Domain)
                        (mdom        :: Domain)
@@ -43,5 +45,12 @@ rxMACCircuit :: forall (edom        :: Domain)
   -> Clock mdom
   -> Reset mdom
   -> Enable mdom
-  -> Circuit (AxiSingleStream edom) (AxiStream mdom)
-rxMACCircuit ethClk ethRst ethEn clk rst en = circuitCDC ethClk clk ethRst rst ethEn en <| undefined
+  -> Circuit (SingleByteStream edom) (TaggedStream mdom)
+rxMACCircuit ethClk ethRst ethEn clk rst en = withEth $ circuitCDC ethClk clk ethRst rst ethEn en
+                                                     <| upconverter
+                                                     <| deconstructHeader
+                                                     -- <| crcChecker
+                                                     <| undefined
+                                                     <| preambleRemover
+  where
+    withEth = withClockResetEnable ethClk ethRst ethEn
