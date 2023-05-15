@@ -10,6 +10,7 @@ import Clash.Cores.Ethernet.Utils ( downconverter )
 import Clash.Cores.Ethernet.MAC.FCS
 import Clash.Cores.Ethernet.MAC.IFG
 import Clash.Cores.Ethernet.MAC.Preamble
+import Clash.Cores.Ethernet.MAC.Padding
 
 type AxiStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 4 0 0) ()
 type AxiSingleStream (dom :: Domain) = Axi4Stream dom ('Axi4StreamConfig 1 0 0) ()
@@ -27,6 +28,7 @@ txMACCircuit :: forall (edom        :: Domain)
 txMACCircuit ethClk ethRst ethEn clk rst en = withEth $ ifgEnforcer
                                                      <| preambleInserter
                                                      <| fcsAppender
+                                                     <| payloadPadder
                                                      <| downconverter
                                                      <| circuitCDC clk ethClk rst ethRst en ethEn
   where
