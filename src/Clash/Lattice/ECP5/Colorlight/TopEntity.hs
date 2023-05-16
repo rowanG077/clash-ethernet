@@ -6,12 +6,13 @@ import Data.Maybe ( isNothing )
 import Data.Proxy ( Proxy (Proxy) )
 
 import Clash.Annotations.TH
-import Clash.Cores.Ethernet.Frame ( testFrame )
+import Clash.Cores.Ethernet.Frame ( testPayload, testHeader )
 import Clash.Cores.Ethernet.MAC ( rxMACCircuit, txMACCircuit )
+import Clash.Cores.Ethernet.MAC.Packetizer
 import Clash.Cores.Ethernet.RGMII
     ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender, RGMIIOut )
-import Clash.Cores.Ethernet.Stream ( TaggedStream, streamTestFramePerSecond )
-import Clash.Cores.Ethernet.MAC.Packetizer
+import Clash.Cores.Ethernet.StaticFrame
+import Clash.Cores.Ethernet.Stream ( TaggedStream )
 import Clash.Signal ( HiddenClockResetEnable )
 
 import Clash.Explicit.Prelude
@@ -98,8 +99,6 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
     ((), eth0Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
       where
         with50 = withClockResetEnable clk50 rst50 en50
-        frame :: Vec 15 (Vec 4 (Unsigned 8))
-        frame = takeI $ unpack $ pack $ drop d8 testFrame
 
         txCirc = rgmiiSender eth0Txclk resetGen enableGen d0
               <| txMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
@@ -107,25 +106,29 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
               <| rgmiiReceiver eth0_rx d80
         mainLogic :: Circuit (TaggedStream Dom50) (TaggedStream Dom50)
         mainLogic = with50 $ macPacketizer
-                          -- <| repeatC (streamTestFramePerSecond 15 frame <| void Proxy)
-                          <| repeatC (undefined <| void Proxy)
+                          <| repeatC (streamTestFramePerSecond 7 frame header <| void Proxy)
                           <| inputFanout
+          where
+            frame :: Vec 7 (Vec 4 (Unsigned 8))
+            frame = unpack $ pack $ testPayload
+            header = testHeader
         inputFanout :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))
         inputFanout = fanout Proxy Proxy
 
     ((), eth1Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
       where
         with50 = withClockResetEnable clk50 rst50 en50
-        frame :: Vec 15 (Vec 4 (Unsigned 8))
-        frame = take d15 $ unpack $ pack $ drop d8 testFrame
 
         txCirc = rgmiiSender eth1Txclk resetGen enableGen d0
               <| txMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
         rxCirc = rxMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
               <| rgmiiReceiver eth1_rx d80
         mainLogic :: Circuit (TaggedStream Dom50) (TaggedStream Dom50)
-        -- mainLogic = with50 (streamTestFramePerSecond 15 frame <| void Proxy)
-        mainLogic = with50 (undefined <| void Proxy)
+        mainLogic = with50 (streamTestFramePerSecond 7 frame header <| void Proxy)
+          where
+            frame :: Vec 7 (Vec 4 (Unsigned 8))
+            frame = unpack $ pack $ testPayload
+            header = testHeader
 
     in
       ( uartTxBit
