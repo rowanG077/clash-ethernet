@@ -1,4 +1,4 @@
-module Clash.Cores.Ethernet.MAC ( txMACCircuit, rxMACCircuit ) where
+module Clash.Cores.Ethernet.MAC ( macCircuits, txMACCircuit, rxMACCircuit ) where
 
 import Clash.Cores.Ethernet.Stream ( SingleByteStream, TaggedStream )
 import Clash.Prelude
@@ -15,6 +15,20 @@ import Clash.Cores.Ethernet.MAC.Padding
 import Clash.Cores.Ethernet.MAC.Preamble
 import Clash.Cores.Ethernet.MAC.PreambleRemover
 import Clash.Cores.Ethernet.Utils ( downconverter, upconverter )
+
+macCircuits :: forall (edom        :: Domain)
+                      (mdom        :: Domain)
+   . (KnownDomain edom, KnownDomain mdom)
+  => Clock edom
+  -> Reset edom
+  -> Enable edom
+  -> Clock mdom
+  -> Reset mdom
+  -> Enable mdom
+  -> ( Circuit (SingleByteStream edom) (TaggedStream mdom)
+     , Circuit (TaggedStream mdom) (SingleByteStream edom)
+     )
+macCircuits ethClk ethRst ethEn clk rst en = (rxMACCircuit ethClk ethRst ethEn clk rst en, txMACCircuit ethClk ethRst ethEn clk rst en)
 
 txMACCircuit :: forall (edom        :: Domain)
                        (mdom        :: Domain)

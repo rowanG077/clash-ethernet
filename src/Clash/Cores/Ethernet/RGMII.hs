@@ -1,4 +1,4 @@
-module Clash.Cores.Ethernet.RGMII ( rgmiiSender, rgmiiReceiver, RGMIIRXChannel (..), RGMIITXChannel (..), RGMIIOut ) where
+module Clash.Cores.Ethernet.RGMII ( rgmiiCircuits, rgmiiSender, rgmiiReceiver, RGMIIRXChannel (..), RGMIITXChannel (..), RGMIIOut ) where
 
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
@@ -29,6 +29,22 @@ data RGMIIOut (dom :: Domain)
 instance Protocol (RGMIIOut dom) where
     type Fwd (RGMIIOut dom) = RGMIITXChannel dom
     type Bwd (RGMIIOut dom) = ()
+
+rgmiiCircuits :: forall dom domDDR txDelay rxDelay fPeriod edge reset init polarity . (txDelay <= 127, rxDelay <= 127)
+  => KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
+  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+  => Clock dom
+  -> Reset dom
+  -> Enable dom
+  -> RGMIIRXChannel dom domDDR
+  -> SNat rxDelay
+  -- ^ rx delay needed
+  -> SNat txDelay
+  -- ^ tx delay needed
+  -> ( Circuit () (SingleByteStream dom)
+     , Circuit (SingleByteStream dom) (RGMIIOut domDDR)
+     )
+rgmiiCircuits clk rst en rxChannel rxDelay txDelay = (rgmiiReceiver rxChannel rxDelay, rgmiiSender clk rst en txDelay)
 
 
 -- | sender component of RGMII -> NOTE: for now transmission error is not considered

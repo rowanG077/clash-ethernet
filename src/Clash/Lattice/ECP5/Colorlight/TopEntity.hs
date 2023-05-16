@@ -1,4 +1,5 @@
 {-# LANGUAGE NumericUnderscores #-}
+{-# OPTIONS -fplugin=Protocols.Plugin #-}
 
 module Clash.Lattice.ECP5.Colorlight.TopEntity ( topEntity ) where
 
@@ -7,10 +8,9 @@ import Data.Proxy ( Proxy (Proxy) )
 
 import Clash.Annotations.TH
 import Clash.Cores.Ethernet.Frame ( testPayload, testHeader )
-import Clash.Cores.Ethernet.MAC ( rxMACCircuit, txMACCircuit )
+import Clash.Cores.Ethernet.MAC ( macCircuits )
 import Clash.Cores.Ethernet.MAC.Packetizer
 import Clash.Cores.Ethernet.RGMII
-    ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender, RGMIIOut )
 import Clash.Cores.Ethernet.StaticFrame
 import Clash.Cores.Ethernet.Stream ( TaggedStream )
 import Clash.Signal ( HiddenClockResetEnable )
@@ -96,39 +96,44 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
     eth1Txclk = rgmii_rx_clk eth1_rx
 
     {- SETUP MAC LAYER -}
-    ((), eth0Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
+    ((), eth0Tx) = toSignals circ ((),())
       where
         with50 = withClockResetEnable clk50 rst50 en50
 
-        txCirc = rgmiiSender eth0Txclk resetGen enableGen d0
-              <| txMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
-        rxCirc = rxMACCircuit eth0Txclk resetGen enableGen clk50 rst50 en50
-              <| rgmiiReceiver eth0_rx d80
-        mainLogic :: Circuit (TaggedStream Dom50) (TaggedStream Dom50)
-        mainLogic = with50 $ macPacketizer
-                          <| repeatC (streamTestFramePerSecond 7 frame header <| void Proxy)
-                          <| inputFanout
+        mainLogic = with50 $ do
+          macPacketizer
+            <| repeatC (streamTestFramePerSecond 7 frame header <| void Proxy)
+            <| inputFanout
+          where
+            inputFanout :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))
+            inputFanout = fanout Proxy Proxy
+
+            frame :: Vec 7 (Vec 4 (Unsigned 8))
+            frame = unpack $ pack $ testPayload
+            header = testHeader
+
+        circ = do
+          let (rxMAC, txMAC) = macCircuits eth0Txclk resetGen enableGen clk50 rst50 en50
+          let (rxRGMII, txRGMII) = rgmiiCircuits eth0Txclk resetGen enableGen eth0_rx d80 d0
+
+          txRGMII <| txMAC <| mainLogic <| rxMAC <| rxRGMII
+
+    ((), eth1Tx) = toSignals circ ((),())
+      where
+        with50 = withClockResetEnable clk50 rst50 en50
+
+        mainLogic = with50 $ do
+            streamTestFramePerSecond 7 frame header <| void Proxy
           where
             frame :: Vec 7 (Vec 4 (Unsigned 8))
             frame = unpack $ pack $ testPayload
             header = testHeader
-        inputFanout :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))
-        inputFanout = fanout Proxy Proxy
 
-    ((), eth1Tx) = toSignals (txCirc <| mainLogic <| rxCirc) ((),())
-      where
-        with50 = withClockResetEnable clk50 rst50 en50
+        circ = do
+          let (rxMAC, txMAC) = macCircuits eth1Txclk resetGen enableGen clk50 rst50 en50
+          let (rxRGMII, txRGMII) = rgmiiCircuits eth1Txclk resetGen enableGen eth1_rx d80 d0
 
-        txCirc = rgmiiSender eth1Txclk resetGen enableGen d0
-              <| txMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
-        rxCirc = rxMACCircuit eth1Txclk resetGen enableGen clk50 rst50 en50
-              <| rgmiiReceiver eth1_rx d80
-        mainLogic :: Circuit (TaggedStream Dom50) (TaggedStream Dom50)
-        mainLogic = with50 (streamTestFramePerSecond 7 frame header <| void Proxy)
-          where
-            frame :: Vec 7 (Vec 4 (Unsigned 8))
-            frame = unpack $ pack $ testPayload
-            header = testHeader
+          txRGMII <| txMAC <| mainLogic <| rxMAC <| rxRGMII
 
     in
       ( uartTxBit
