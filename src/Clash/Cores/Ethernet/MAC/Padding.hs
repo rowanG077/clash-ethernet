@@ -22,12 +22,10 @@ payloadPadder = mealyToCircuit machineAsFunction initialState where
   machineAsFunction LongEnough (inp, recvACK) = (newState, (recvACK, inp))
     where
       newState = case _tlast <$> inp of
-        Just True -> initialState
-        _ -> LongEnough
         -- This is the end of the payload, reset state
-        -- | maybe False ((head . _tlast) <$> inp) = initialState
+        Just True -> initialState
         -- We're already long enough
-        -- | otherwise = LongEnough
+        _ -> LongEnough
   machineAsFunction (AddPadding n user) (_, recvACK) = (newState, (notReady, Just nullByte))
     where
       newState
@@ -41,7 +39,7 @@ payloadPadder = mealyToCircuit machineAsFunction initialState where
                    { _tdata = singleton 0
                    , _tkeep = singleton True
                    , _tstrb = singleton False
-                   , _tlast = False
+                   , _tlast = n+1 >= 46
                    , _tuser = user
                    , _tid = 0
                    , _tdest = 0
@@ -49,6 +47,7 @@ payloadPadder = mealyToCircuit machineAsFunction initialState where
   machineAsFunction (TooShort n) (Nothing, recvACK) = (TooShort n, (recvACK, Nothing))
   machineAsFunction (TooShort n) (Just inp, recvACK) = (newState, (recvACK, output))
     where
+      newCount = if head $ _tkeep inp then n+1 else n
       output
         -- Too short for this to be the last packet, we still need to add some padding
         | newCount < 46 && _tlast inp = Just Axi4StreamM2S
@@ -61,8 +60,9 @@ payloadPadder = mealyToCircuit machineAsFunction initialState where
                                            , _tdest = _tdest inp
                                            }
         | otherwise = Just inp
-      newCount = if head $ _tkeep inp then n+1 else n
       newState
+        -- No transfer happening this clock cycle
+        | not $ _tready recvACK = TooShort n
         -- Packet ends, we need to add a padding
         | newCount < 46 && _tlast inp = AddPadding newCount (_tuser inp)
         -- Still too short, keep counting
@@ -70,4 +70,4 @@ payloadPadder = mealyToCircuit machineAsFunction initialState where
         -- Handle edge case!
         | newCount >= 46 && _tlast inp = initialState
         -- We've become long enough
-        | newCount >= 46 = LongEnough
+        | otherwise = LongEnough
