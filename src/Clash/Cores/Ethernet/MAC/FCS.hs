@@ -5,9 +5,9 @@ import Protocols
 import Protocols.Axi4.Stream
 
 import Clash.Cores.Ethernet.Stream ( mealyToCircuit, SingleByteStream, SingleByteStreamFwd )
-import Clash.Cores.Ethernet.CRC ( CRCState, finish_crc_state, crc_starting_state, upd_crc_state )
+import Clash.Cores.Ethernet.CRC ( CRCState, crc_starting_state, upd_crc_state, upd_crc_byte )
 
-data FCSState = Accumulating CRCState | Appending (Index 4) (Vec 4 Byte)
+data FCSState = Accumulating CRCState | Finishing (Index 4) (BitVector 32) | Appending (Index 4) (Vec 4 Byte)
   deriving (Show, Eq, Generic, NFDataX)
 
 type Byte = BitVector 8
@@ -39,9 +39,17 @@ fcsAppender = mealyToCircuit machineAsFunction starting_state where
       newState
         -- No transmit taking place this cycle, keep in same state
         | not (_tready recvACK) = Accumulating s
-        -- No transmit taking place this cycle, keep in same state
-        | _tlast inp = Appending 0 (unpack $ finish_crc_state newCRC)
+        -- This is the last byte, go finish the CRC
+        | _tlast inp = Finishing 0 (fst newCRC)
         | otherwise = Accumulating newCRC
+  -- Add 0 bytes and finally take the complement
+  machineAsFunction (Finishing ind bv) (_, _) = (newState, (notReady, Nothing))
+    where
+      notReady = Axi4StreamS2M { _tready = False }
+      newCRC = upd_crc_byte bv 0
+      newState
+        | ind == 3 = Appending 0 (unpack $ pack $ complement newCRC)
+        | otherwise = Finishing (ind+1) newCRC
   machineAsFunction (Appending ind bv) (_, recvACK) = (newState, (notReady, out))
     where
       notReady = Axi4StreamS2M { _tready = False }

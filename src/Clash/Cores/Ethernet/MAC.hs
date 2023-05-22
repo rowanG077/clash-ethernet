@@ -5,6 +5,9 @@ import Clash.Prelude
 import Protocols
 import Protocols.Axi4.Stream
 
+import Data.Proxy ( Proxy (Proxy) )
+import Protocols.DfConv
+
 -- Components
 import Clash.Cores.Ethernet.CDC ( circuitCDC )
 import Clash.Cores.Ethernet.MAC.ConstructHeader
@@ -44,7 +47,10 @@ txMACCircuit ethClk ethRst ethEn clk rst en = withEth $ ifgEnforcer
                                                      <| preambleInserter
                                                      <| fcsAppender
                                                      <| constructHeader
-                                                     <| payloadPadder
+                                                     -- TODO: fix timing of `payloadPadder` function
+                                                     -- <| registerBwd Proxy Proxy
+                                                     -- <| payloadPadder
+                                                     -- <| registerBwd Proxy Proxy
                                                      <| downconverter
                                                      <| circuitCDC clk ethClk rst ethRst en ethEn
   where
