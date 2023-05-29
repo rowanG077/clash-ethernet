@@ -7,7 +7,6 @@ import Data.Maybe ( isNothing )
 import Data.Proxy ( Proxy (Proxy) )
 
 import Clash.Annotations.TH
-import Clash.Cores.Ethernet.Frame ( testPayload, testHeader )
 import Clash.Cores.Ethernet.MAC ( macCircuits )
 import Clash.Cores.Ethernet.MAC.Packetizer
 import Clash.Cores.Ethernet.RGMII
@@ -24,6 +23,7 @@ import Protocols.DfConv ( void, fanout )
 
 import Clash.Cores.Ethernet.MDIO ( mdioComponent )
 import Clash.Lattice.ECP5.Colorlight.Bridge ( uartToMdioBridge )
+import Clash.Lattice.ECP5.Colorlight.SendCounter
 
 data SDRAMOut domain = SDRAMOut
   {
@@ -102,7 +102,7 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
         mainLogic = with50 $ circuit $ \inp -> do
           [inp1, inp2] <- (fanout Proxy Proxy :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))) -< inp
 
-          out1 <- streamTestFramePerSecond <| void Proxy -< inp1
+          out1 <- sendCounterPerSecond <| void Proxy -< inp1
           out2 <- streamTestFramePerSecond <| (void Proxy :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) ()) -< inp2
 
           macPacketizer -< [out1, out2]
