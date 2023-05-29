@@ -13,12 +13,11 @@ import Clash.Cores.Ethernet.MAC.Packetizer
 import Clash.Cores.Ethernet.RGMII
 import Clash.Cores.Ethernet.StaticFrame
 import Clash.Cores.Ethernet.Stream ( TaggedStream )
-import Clash.Signal ( HiddenClockResetEnable )
 
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
-import Clash.Signal ( exposeClockResetEnable, withClockResetEnable )
+import Clash.Signal ( exposeClockResetEnable, HiddenClockResetEnable, withClockResetEnable )
 
 import Protocols
 import Protocols.DfConv ( void, fanout )
@@ -100,17 +99,18 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
       where
         with50 = withClockResetEnable clk50 rst50 en50
 
-        mainLogic = with50 $ do
-          macPacketizer
-            <| repeatC (streamTestFramePerSecond 7 frame header <| void Proxy)
-            <| inputFanout
-          where
-            inputFanout :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))
-            inputFanout = fanout Proxy Proxy
+        mainLogic = with50 $ circuit $ \inp -> do
+          [inp1, inp2] <- inputFanout -< inp
+          out1 <- streamTestFramePerSecond 7 frame header <| void Proxy -< inp1
+          out2 <- streamTestFramePerSecond 7 frame header <| (void Proxy :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) ()) -< inp2
+          macPacketizer -< [out1, out2]
+            where
+              inputFanout :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))
+              inputFanout = fanout Proxy Proxy
 
-            frame :: Vec 7 (Vec 4 (Unsigned 8))
-            frame = unpack $ pack $ testPayload
-            header = testHeader
+              frame :: Vec 7 (Vec 4 (Unsigned 8))
+              frame = unpack $ pack $ testPayload
+              header = testHeader
 
         circ = do
           let (rxMAC, txMAC) = macCircuits eth0Txclk resetGen enableGen clk50 rst50 en50
