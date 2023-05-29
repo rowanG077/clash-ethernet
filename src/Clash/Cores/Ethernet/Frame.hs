@@ -1,8 +1,10 @@
-module Clash.Cores.Ethernet.Frame (sendFrameOnPulse, testFrame) where
+{-# language NumericUnderscores #-}
+
+module Clash.Cores.Ethernet.Frame ( testFrame, testPayload, testHeader ) where
 
 import Clash.Prelude
-
-import Data.Maybe (isNothing)
+import Data.Maybe ( isNothing )
+import Clash.Cores.Ethernet.Stream ( EthernetHeader (..) )
 
 type Byte = BitVector 8
 
@@ -13,6 +15,15 @@ type Byte = BitVector 8
 testFrame :: Vec (8+64) Byte
 testFrame = preamble ++ (hexToVec 0xffffffffffff54833a354a500806000108000604000154833a354a50c0a80101ffffffffffffc0a801c500000000000000000000000000000000000026544e8b)
 
+testHeader :: EthernetHeader
+testHeader = EthernetHeader { destinationMAC = unpack (0xffffffffffff :: BitVector (6*8))
+                            , sourceMAC = unpack (0x54833a354a50 :: BitVector (6*8))
+                            , etherType = 0x0806
+                            }
+
+testPayload :: Vec 28 Byte
+testPayload = hexToVec 0x000108000604000154833a354a50c0a80101ffffffffffffc0a801c5
+
 hexToVec :: KnownNat n => Unsigned (8*n) -> Vec n Byte
 hexToVec x = unpack $ pack x
 
@@ -20,24 +31,6 @@ preamble :: Vec 8 Byte
 preamble = replicate d7 0x55 :< sfd
     where
         sfd = 0xd5
-
-crcCalculate :: Vec n Byte -> BitVector 32
-crcCalculate _ = 0xBAADF00D
-
--- | Creates a static ethernet frame including preamble and CRC
---
--- NOTE: Needs to have a valid size, add padding to your payload if the size is too small.
--- NOTE:Does not include the inter-frame gap (IFG/IPG)
-createStaticFrame :: forall n . (KnownNat n, (72 <=? 8+6+6+2+n+4) ~ 'True, (8+6+6+2+n+4 <=? 1530) ~ 'True)
-    => Vec 6 Byte
-    -> Vec 6 Byte
-    -> BitVector 16
-    -> Vec n Byte
-    -> Vec (8 + 6 + 6 + 2 + n + 4) Byte
-createStaticFrame src dest eth_type payload = preamble ++ dest ++ src ++ (unpack eth_type) ++ payload ++ crc
-    where
-        crc :: Vec 4 Byte
-        crc = unpack $ crcCalculate $ dest ++ src ++ (unpack eth_type) ++ payload
 
 sendFrameOnPulse :: forall dom . HiddenClockResetEnable dom
     => Signal dom Bool
