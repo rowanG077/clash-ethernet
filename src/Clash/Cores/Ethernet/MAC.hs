@@ -13,6 +13,7 @@ import Clash.Cores.Ethernet.MAC.FCS
 import Clash.Cores.Ethernet.MAC.IFG
 import Clash.Cores.Ethernet.MAC.Padding
 import Clash.Cores.Ethernet.MAC.Preamble
+import Clash.Cores.Ethernet.MAC.PreambleRemover
 import Clash.Cores.Ethernet.Utils ( downconverter, upconverter )
 
 macCircuits :: forall (edom        :: Domain)
@@ -71,5 +72,6 @@ rxMACCircuit :: forall (edom        :: Domain)
 rxMACCircuit ethClk ethRst ethEn clk rst en = withEth $ circuitCDC ethClk clk ethRst rst ethEn en
                                                      <| upconverter
                                                      <| undefined
+                                                     <| preambleRemover
   where
     withEth = withClockResetEnable ethClk ethRst ethEn
