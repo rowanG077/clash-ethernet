@@ -1,11 +1,8 @@
 module Clash.Cores.Ethernet.MAC.Packetizer ( macPacketizer ) where
 
 import Clash.Prelude
-import Data.Maybe ( isNothing )
 import Protocols
 import Protocols.Axi4.Stream
-
-import Clash.Cores.Ethernet.Stream ( FourByteStream, FourByteStreamFwd, mealyToCircuit )
 
 -- | id of stream we're routing
 data State n = Idle (Index n) | Streaming (Index n)
@@ -28,9 +25,13 @@ macPacketizer = Circuit $ circuitFunction where
 
   -- We're not routing anything, is this stream sending?
   machineAsFunction (Idle ind) (vec, recvACK) = (nextState, (replace ind recvACK $ repeat notReady, vec !! ind)) where
-    nextState
-      | isNothing (vec !! ind) = Idle $ satSucc SatWrap ind
-      | otherwise = Streaming ind
+    nextState = case vec !! ind of
+      Nothing -> Idle $ satSucc SatWrap ind
+      Just p -> if _tlast p then
+                  -- Edge case: If this is already the last Axi4 transmission then we should also continue
+                  Idle $ satSucc SatWrap ind
+                else
+                  Streaming ind
 
   -- We're routing this stream, is the _tlast set?
   machineAsFunction (Streaming ind) (vec, recvACK) = (nextState (vec !! ind), (replace ind recvACK $ repeat notReady, vec !! ind)) where
