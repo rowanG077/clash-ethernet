@@ -100,17 +100,12 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
         with50 = withClockResetEnable clk50 rst50 en50
 
         mainLogic = with50 $ circuit $ \inp -> do
-          [inp1, inp2] <- inputFanout -< inp
-          out1 <- streamTestFramePerSecond 7 frame header <| void Proxy -< inp1
-          out2 <- streamTestFramePerSecond 7 frame header <| (void Proxy :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) ()) -< inp2
-          macPacketizer -< [out1, out2]
-            where
-              inputFanout :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))
-              inputFanout = fanout Proxy Proxy
+          [inp1, inp2] <- (fanout Proxy Proxy :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (Vec 2 (TaggedStream dom))) -< inp
 
-              frame :: Vec 7 (Vec 4 (Unsigned 8))
-              frame = unpack $ pack $ testPayload
-              header = testHeader
+          out1 <- streamTestFramePerSecond <| void Proxy -< inp1
+          out2 <- streamTestFramePerSecond <| (void Proxy :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) ()) -< inp2
+
+          macPacketizer -< [out1, out2]
 
         circ = do
           let (rxMAC, txMAC) = macCircuits eth0Txclk resetGen enableGen clk50 rst50 en50
@@ -123,11 +118,7 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
         with50 = withClockResetEnable clk50 rst50 en50
 
         mainLogic = with50 $ do
-            streamTestFramePerSecond 7 frame header <| void Proxy
-          where
-            frame :: Vec 7 (Vec 4 (Unsigned 8))
-            frame = unpack $ pack $ testPayload
-            header = testHeader
+            streamTestFramePerSecond <| void Proxy
 
         circ = do
           let (rxMAC, txMAC) = macCircuits eth1Txclk resetGen enableGen clk50 rst50 en50

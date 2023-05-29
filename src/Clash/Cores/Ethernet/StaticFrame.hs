@@ -8,19 +8,23 @@ import Protocols
 import Protocols.Axi4.Stream
 
 import Clash.Cores.Ethernet.CRC ( CRCState, crc_starting_state, finish_crc_state, upd_crc_state )
-import Clash.Cores.Ethernet.Frame ( testFrame )
+import Clash.Cores.Ethernet.Frame
 import Clash.Cores.Ethernet.Stream ( EthernetHeader, TaggedStream, TaggedStreamFwd, mealyToCircuit )
 
 type Byte = Unsigned 8
 
--- | Continually streams the given header+payload every 50 million clock cycles
+-- | Continually streams the test header+payload from Clash.Cores.Ethernet.Frame every 50 million clock cycles
 streamTestFramePerSecond :: forall n dom
   . C.HiddenClockResetEnable dom
-  => Unsigned 32
-  -> Vec n (Vec 4 Byte)
-  -> EthernetHeader
-  -> Circuit () (TaggedStream dom)
-streamTestFramePerSecond len brContent header = Circuit $ circuitFunction where
+  => Circuit () (TaggedStream dom)
+streamTestFramePerSecond = Circuit $ circuitFunction where
+  header = testHeader
+  len = 7
+  -- Needs to be declared here instead of passed as an argument because it must be constant
+  -- See: https://github.com/clash-lang/clash-compiler/issues/331
+  brContent :: Vec 7 (Vec 4 Byte)
+  brContent = unpack $ pack $ testPayload
+
   circuitFunction ((), recvACK) = ((), out) where
     -- initialize bram
     brRead = C.blockRam brContent brReadAddr brWrite
