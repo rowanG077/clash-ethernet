@@ -8,6 +8,7 @@ import Protocols
 import Clash.Cores.Ethernet.CDC ( circuitCDC )
 import Clash.Cores.Ethernet.MAC.ConstructHeader
 import Clash.Cores.Ethernet.MAC.IFG
+import Clash.Cores.Ethernet.MAC.Padding
 import Clash.Cores.Ethernet.MAC.Preamble
 import Clash.Cores.Ethernet.Utils ( downconverter, upconverter )
 
@@ -38,6 +39,7 @@ txMACCircuit :: forall (edom        :: Domain)
 txMACCircuit ethClk ethRst ethEn clk rst en = withEth $ ifgEnforcer
                                                      <| preambleInserter
                                                      <| constructHeader
+                                                     <| payloadPadder
                                                      <| downconverter
                                                      <| circuitCDC clk ethClk rst ethRst en ethEn
   where
