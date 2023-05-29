@@ -1,23 +1,27 @@
 {-# LANGUAGE NumericUnderscores #-}
+{-# OPTIONS -fplugin=Protocols.Plugin #-}
 
 module Clash.Lattice.ECP5.Colorlight.TopEntity ( topEntity ) where
 
+import Data.Maybe ( isNothing )
+import Data.Proxy ( Proxy (Proxy) )
+
 import Clash.Annotations.TH
-import Clash.Cores.Ethernet.Frame ( sendFrameOnPulse )
+import Clash.Cores.Ethernet.MAC ( macCircuits )
 import Clash.Cores.Ethernet.RGMII
-    ( RGMIIRXChannel(..), RGMIITXChannel(..), rgmiiReceiver, rgmiiSender )
+import Clash.Cores.Ethernet.StaticFrame
+import Clash.Cores.Ethernet.Stream ( TaggedStream )
+
 import Clash.Explicit.Prelude
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Lattice.ECP5.Prims
-import Clash.Prelude ( exposeClockResetEnable )
-import Clash.Signal ( exposeClockResetEnable, hideClockResetEnable )
+import Clash.Signal ( exposeClockResetEnable, HiddenClockResetEnable, withClockResetEnable )
+
+import Protocols
+import Protocols.DfConv ( void )
 
 import Clash.Cores.Ethernet.MDIO ( mdioComponent )
 import Clash.Lattice.ECP5.Colorlight.Bridge ( uartToMdioBridge )
-
-import Data.Maybe (isNothing)
-
-import Clash.Cores.UART
 
 data SDRAMOut domain = SDRAMOut
   {
@@ -61,8 +65,9 @@ topEntity
      )
 topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
   let
-    (clk50, rst50) = crg clk25
+    (clk50, _clkEthTx, rst50, _rstEthTx) = crg clk25
     en50 = enableGen
+    _enEthTx = enableGen
 
     -- MDIO component
     mdio, mdioReg :: Signal Dom50 Bit
@@ -84,17 +89,36 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
 
     {- ETH0 ~ RGMII SETUP -}
     eth0Txclk = rgmii_rx_clk eth0_rx
-    macInput = rgmiiReceiver eth0_rx (delayg d80)
-    eth0Tx = rgmiiSender eth0Txclk resetGen enableGen (delayg d0) (\a b _ -> oddrx1f a b) macOutput
 
     {- ETH1 ~ RGMII SETUP -}
     eth1Txclk = rgmii_rx_clk eth1_rx
-    macInput1 = rgmiiReceiver eth1_rx (delayg d80)
-    eth1Tx = rgmiiSender eth1Txclk resetGen enableGen (delayg d0) (\a b _ -> oddrx1f a b) macOutput1
 
     {- SETUP MAC LAYER -}
-    macOutput = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 125_000_000)) eth0Txclk resetGen enableGen
-    macOutput1 = exposeClockResetEnable (sendFrameOnPulse $ hideClockResetEnable riseEvery (SNat :: SNat 125_000_000)) eth1Txclk resetGen enableGen
+    ((), eth0Tx) = toSignals circ ((),())
+      where
+        with50 = withClockResetEnable clk50 rst50 en50
+
+        mainLogic = with50 $ do
+          streamTestFramePerSecond <| void Proxy
+
+        circ = do
+          let (rxMAC, txMAC) = macCircuits eth0Txclk resetGen enableGen clk50 rst50 en50
+          let (rxRGMII, txRGMII) = rgmiiCircuits eth0Txclk resetGen enableGen eth0_rx (delayg d80) (delayg d0) (\a b _ -> iddrx1f a b) (\a b _ -> oddrx1f a b)
+
+          txRGMII <| txMAC <| mainLogic <| rxMAC <| rxRGMII
+
+    ((), eth1Tx) = toSignals circ ((),())
+      where
+        with50 = withClockResetEnable clk50 rst50 en50
+
+        mainLogic = with50 $ do
+            streamTestFramePerSecond <| void Proxy
+
+        circ = do
+          let (rxMAC, txMAC) = macCircuits eth1Txclk resetGen enableGen clk50 rst50 en50
+          let (rxRGMII, txRGMII) = rgmiiCircuits eth1Txclk resetGen enableGen eth1_rx (delayg d80) (delayg d0) (\a b _ -> iddrx1f a b) (\a b _ -> oddrx1f a b)
+
+          txRGMII <| txMAC <| mainLogic <| rxMAC <| rxRGMII
 
     in
       ( uartTxBit
