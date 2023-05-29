@@ -36,7 +36,7 @@ sendCounterPerSecond = Circuit $ circuitFunction where
         -- | timer > 1_000 = State 0 cnt
         | timer > 50_000_000 = State 0 cnt
         | timer > 0 = State (timer+1) cnt
-        | _tready recvACK = State timer (satSucc SatWrap cnt)
+        | _tready recvACK = State (timer+1) (satSucc SatWrap cnt)
         | otherwise = State timer cnt
       -- Only output when the timer is 0
       out
