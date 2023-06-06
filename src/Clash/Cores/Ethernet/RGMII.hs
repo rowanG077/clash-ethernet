@@ -1,14 +1,15 @@
-module Clash.Cores.Ethernet.RGMII ( rgmiiCircuits, rgmiiSender, rgmiiReceiver, RGMIIRXChannel (..), RGMIITXChannel (..), RGMIIOut ) where
+{-# language FlexibleContexts #-}
+
+module Clash.Cores.Ethernet.RGMII ( rgmiiCircuits, rgmiiSender, rgmiiReceiver, RGMIIRXChannel (..), RGMIITXChannel (..) ) where
 
 import Clash.Prelude
-import Data.Maybe ( isJust )
+import Data.Maybe ( isJust, isNothing )
 
-
+import Clash.Cores.Ethernet.Stream ( SingleByteStream, SingleByteStreamFwd, mealyToCircuit )
 import Protocols
 import Protocols.Axi4.Stream
-import Clash.Cores.Ethernet.Stream ( SingleByteStream )
+import Protocols.Internal ( CSignal(..) )
 
--- NOTE: make ddrDomain generic -> 2 * ddrDomain frequency = domain frequency
 data RGMIIRXChannel domain ddrDomain = RGMIIRXChannel
   {
     rgmii_rx_clk :: "rx_clk" ::: Clock domain,
@@ -23,19 +24,21 @@ data RGMIITXChannel ddrDomain = RGMIITXChannel
     rgmii_tx_data :: "tx_data" ::: Signal ddrDomain (BitVector 4)
   }
 
-data RGMIIOut (dom :: Domain)
+instance Protocol (RGMIIRXChannel dom domDDR) where
+    type Fwd (RGMIIRXChannel dom domDDR) = RGMIIRXChannel dom domDDR
+    type Bwd (RGMIIRXChannel dom domDDR) = ()
 
-instance Protocol (RGMIIOut dom) where
-    type Fwd (RGMIIOut dom) = RGMIITXChannel dom
-    type Bwd (RGMIIOut dom) = ()
+instance Protocol (RGMIITXChannel dom) where
+    type Fwd (RGMIITXChannel dom) = RGMIITXChannel dom
+    type Bwd (RGMIITXChannel dom) = ()
 
+-- | Convenience function for getting the circuits of both `rgmiiSender` and `rgmiiReceiver`.
 rgmiiCircuits :: forall dom domDDR fPeriod edge reset init polarity .
   KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
   => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
   => Clock dom
   -> Reset dom
   -> Enable dom
-  -> RGMIIRXChannel dom domDDR
   -> (forall a . Signal domDDR a -> Signal domDDR a)
   -- ^ rx delay needed
   -> (forall a . Signal domDDR a -> Signal domDDR a)
@@ -44,22 +47,27 @@ rgmiiCircuits :: forall dom domDDR fPeriod edge reset init polarity .
   -- ^ iddr function
   -> (forall a . (NFDataX a, BitPack a) => Clock dom -> Reset dom -> Enable dom -> Signal dom a -> Signal dom a -> Signal domDDR a)
   -- ^ oddr function
-  -> ( Circuit () (SingleByteStream dom)
-     , Circuit (SingleByteStream dom) (RGMIIOut domDDR)
+  -> ( Circuit (RGMIIRXChannel dom domDDR) (SingleByteStream dom)
+     , Circuit (SingleByteStream dom) (RGMIITXChannel domDDR)
      )
-rgmiiCircuits clk rst en rxChannel rxDelay txDelay iddr oddr = (rgmiiReceiver rxChannel rxDelay iddr, rgmiiSender clk rst en txDelay oddr)
+rgmiiCircuits clk rst en rxDelay txDelay iddr oddr = (rgmiiReceiver clk rst en rxDelay iddr, rgmiiSender clk rst en txDelay oddr)
 
+-- | Sender component from Axi4Stream to RGMII
+--
+-- Always has `_tready` set to `True`.
+--
+-- NOTE: for now transmission error is not considered
 rgmiiSender :: forall dom domDDR fPeriod edge reset init polarity
-  . KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)     -- 0
-  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity) -- 1
-  => Clock dom -- the DDR tx clock
+  . KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
+  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+  => Clock dom
   -> Reset dom
   -> Enable dom
   -> (forall a . Signal domDDR a -> Signal domDDR a)
   -- ^ tx delay function
   -> (forall a . (NFDataX a, BitPack a) => Clock dom -> Reset dom -> Enable dom -> Signal dom a -> Signal dom a -> Signal domDDR a)
   -- ^ oddr function
-  -> Circuit (SingleByteStream dom) (RGMIIOut domDDR)
+  -> Circuit (SingleByteStream dom) (RGMIITXChannel domDDR)
   -- ^ tx channel to the phy
 rgmiiSender txClk rst en txdelay oddr = Circuit circuitFunction where
     circuitFunction (axiInput,_) = (pure Axi4StreamS2M {_tready = True}, RGMIITXChannel
@@ -88,55 +96,85 @@ rgmiiSender txClk rst en txdelay oddr = Circuit circuitFunction where
         txData = oddr txClk rst en data2 data1
 
 
--- | receiver component of RGMII
+-- | Receiver component from RGMII to Axi4Stream
+--
+-- Sets `_tlast` to `True` iff this is the last byte in an Ethernet frame, see `unsafeToAxi`.
+--
+-- Does not handle backpressure!
 rgmiiReceiver :: forall (dom :: Domain) (domDDR :: Domain) fPeriod edge reset init polarity .
-  KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity) -- 0
-  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity) -- 1
-  => RGMIIRXChannel dom domDDR
-  -- ^ rx channel from phy
+  KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
+  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+  => Clock dom
+  -> Reset dom
+  -> Enable dom
   -> (forall a . Signal domDDR a -> Signal domDDR a)
   -- ^ rx delay function
   -> (forall a . (NFDataX a, BitPack a) => Clock dom -> Reset dom -> Enable dom -> Signal domDDR a -> Signal dom (a, a))
   -- ^ iddr function
-  -> Circuit () (SingleByteStream dom)
-rgmiiReceiver channel rxdelay iddr = Circuit $ \_ -> ((), fmap toAxi <$> macInput)
+  -> Circuit (RGMIIRXChannel dom domDDR) (SingleByteStream dom)
+rgmiiReceiver clk rst en rxdelay iddr = (withClockResetEnable clk rst en unsafeToAxi) <| rgmiiReceiverRaw rxdelay iddr
+
+-- Transforms RGMII rxDv, rxErr and rxData signals into an `Axi4Stream`
+--
+-- Processed according to the RGMII specification:
+-- See table 4 of https://web.pa.msu.edu/hep/atlas/l1calo/hub/hardware/components/micrel/rgmii_specification_hp_v1.3_dec_2000.pdf
+--
+-- Does not handle backpressure!
+unsafeToAxi :: HiddenClockResetEnable dom => Circuit (CSignal dom (Bool, Bool, Unsigned 8)) (SingleByteStream dom)
+unsafeToAxi = Circuit circuitFunction
   where
-    -- extract channel
-    ethRxClk :: Clock dom
-    ethRxClk = rgmii_rx_clk channel
-    _ethRxCtl :: Signal domDDR Bit
-    _ethRxCtl = rgmii_rx_ctl channel
-    _ethRxData :: Signal domDDR (BitVector 4)
-    _ethRxData = rgmii_rx_data channel
+    circuitFunction (CSignal inp, _recvACK) = (CSignal $ pure (), mapOutput <$> prev <*> inp)
+      where
+        prev = register (False, False, 0) inp
+    mapOutput (rxDv, rxErr, rxData) (nextRxDv, nextRxErr, _) = out
+      where
+        out = case (rxDv, rxErr) of
+                (True, False) -> Just Axi4StreamM2S { _tdata = singleton rxData
+                                                    , _tkeep = singleton True
+                                                    , _tstrb = singleton False
+                                                    , _tlast = not (nextRxDv && not nextRxErr)
+                                                    , _tuser = ()
+                                                    , _tid = 0
+                                                    , _tdest = 0
+                                                    }
+                _ -> Nothing
 
-    -- delay input signals
-    ethRxCtl :: Signal domDDR Bit
-    ethRxCtl = rxdelay _ethRxCtl
-    ethRxData :: Signal domDDR (BitVector 4)
-    ethRxData = rxdelay _ethRxData
+-- | Extracts rxDv, rxErr and rxData from an `RGMIIRXChannel` and returns it as a `CSignal`
+--
+-- Does not handle backpressure!
+rgmiiReceiverRaw :: forall (dom :: Domain) (domDDR :: Domain) fPeriod edge reset init polarity .
+  KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
+  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+  => (forall a . Signal domDDR a -> Signal domDDR a)
+  -- ^ rx delay function
+  -> (forall a . (NFDataX a, BitPack a) => Clock dom -> Reset dom -> Enable dom -> Signal domDDR a -> Signal dom (a, a))
+  -- ^ iddr function
+  -> Circuit (RGMIIRXChannel dom domDDR) (CSignal dom (Bool, Bool, Unsigned 8))
+rgmiiReceiverRaw rxdelay iddr = Circuit circuitFunction
+  where
+    circuitFunction (channel, _) = ((), CSignal $ bundle (bitToBool <$> ethRxDv, bitToBool <$> ethRxErr, ethRxData))
+     where
+      -- extract channel
+      ethRxClk :: Clock dom
+      ethRxClk = rgmii_rx_clk channel
+      ethRxCtl :: Signal domDDR Bit
+      ethRxCtl = rxdelay $ rgmii_rx_ctl channel
+      ethRxDataDDR :: Signal domDDR (BitVector 4)
+      ethRxDataDDR = rxdelay $ rgmii_rx_data channel
 
-    -- demultiplex signal
-    ethRxDv, ethRxErr :: Signal dom Bit
-    (ethRxDv, ethRxErr) = unbundle $ fmap handleCtl $ iddr ethRxClk resetGen enableGen ethRxCtl
-        where
-            -- The RXCTL signal at the falling edge is the XOR of RXDV and RXERR
-            -- meaning that RXERR is the XOR of it and RXDV.
-            -- See RGMII interface documentation.
-            handleCtl :: (Bit, Bit) -> (Bit, Bit)
-            handleCtl (dv,err) = (dv, dv `xor` err)
-    ethRxData1, ethRxData2 :: Signal dom (BitVector 4)
-    -- LSB first! See RGMII interface documentation.
-    (ethRxData2, ethRxData1) = unbundle $ iddr ethRxClk resetGen enableGen ethRxData
+      -- demultiplex signal
+      ethRxDv, ethRxErr :: Signal dom Bit
+      (ethRxDv, ethRxErr) = unbundle $ fmap handleCtl $ iddr ethRxClk resetGen enableGen ethRxCtl
+          where
+              -- The RXCTL signal at the falling edge is the XOR of RXDV and RXERR
+              -- meaning that RXERR is the XOR of it and RXDV.
+              -- See RGMII interface documentation.
+              handleCtl :: (Bit, Bit) -> (Bit, Bit)
+              handleCtl (dv,err) = (dv, dv `xor` err)
+      ethRxData1, ethRxData2 :: Signal dom (BitVector 4)
+      -- LSB first! See RGMII interface documentation.
+      (ethRxData2, ethRxData1) = unbundle $ iddr ethRxClk resetGen enableGen ethRxDataDDR
 
-    -- rgmii component -> send data to mac when rxDv is high
-    macInput :: Signal dom (Maybe (BitVector 8))
-    macInput = mux (bitToBool <$> ethRxDv) (fmap Just $ (++#) <$> ethRxData1 <*> ethRxData2) (pure Nothing)
-    toAxi :: BitVector 8 -> Axi4StreamM2S ('Axi4StreamConfig 1 0 0) ()
-    toAxi bv = Axi4StreamM2S { _tdata = singleton $ unpack bv
-                            , _tkeep = singleton True
-                            , _tstrb = singleton False
-                            , _tlast = False
-                            , _tuser = ()
-                            , _tid = 0
-                            , _tdest = 0
-                            }
+      -- Merge data into 1 whole byte
+      ethRxData :: Signal dom (Unsigned 8)
+      ethRxData = fmap unpack $ (++#) <$> ethRxData1 <*> ethRxData2
