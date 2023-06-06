@@ -5,12 +5,20 @@ module MyDebug (sampleTopEntityN, packet) where
 import Clash.Lattice.ECP5.Colorlight.TopEntity (topEntity)
 import Clash.Lattice.ECP5.Colorlight.CRG
 import Clash.Cores.Ethernet.RGMII
+import Clash.Cores.Ethernet.Frame
 import Clash.Prelude
 import qualified Data.List as L
 
-packet = asBytes $ L.takeWhile (\(_,a,_) -> a == high) $ L.dropWhile (\(_,a,_) -> a == low) $ sampleTopEntityN 400000000
+packet = asBytes $ L.takeWhile (\(_,a,_) -> a == high) $ L.dropWhile (\(_,a,_) -> a == low) $ sampleTopEntityN 40000
     where
         asBytes = L.map (\((_,_,l):(_,_,m):[]) -> m ++# l) . L.groupBy (\(a,_,_) (b,_, _) -> a == high && b == low)
+
+debugPacket
+  | L.length packet > L.length (toList testFrame) = error $ "Length of packet is too long! " L.++ show comparison
+  | L.length packet < L.length (toList testFrame) = error $ "Length of packet is too short! " L.++ show comparison
+  | otherwise = comparison
+  where
+    comparison = L.zipWith (\a b -> if a == b then Nothing else Just (a,b)) packet (toList testFrame)
 
 -- Gives as many cycles of output as you want.
 sampleTopEntityN :: Int -> [_]

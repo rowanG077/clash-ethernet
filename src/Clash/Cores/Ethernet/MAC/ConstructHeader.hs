@@ -6,20 +6,22 @@ import Protocols.Axi4.Stream
 
 import Clash.Cores.Ethernet.Stream
 
-data State = Destination (Index 6) EthernetHeader | Source (Index 6) EthernetHeader | EtherType (Index 2) EthernetHeader | Passthrough
+data State = Outputting (Index 14) (Vec 14 (Unsigned 8)) | Passthrough
   deriving (Show, Eq, Generic, NFDataX)
 
 constructHeader :: HiddenClockResetEnable dom => Circuit (TaggedSingleByteStream dom) (SingleByteStream dom)
 constructHeader = mealyToCircuit machineAsFunction initialState where
   notReady = Axi4StreamS2M { _tready = False }
-  initialState = Destination 0 undefined
+  initialState = Outputting 0 (replicate d14 0)
 
   machineAsFunction :: State -> (TaggedSingleByteStreamFwd, Axi4StreamS2M) -> (State, (Axi4StreamS2M, SingleByteStreamFwd))
-  machineAsFunction s@(Destination 0 _) (Nothing, _) = (s, (notReady, Nothing))
-  machineAsFunction s@(Destination 0 _) (Just inp, recvACK) = (nextState, (notReady, out))
+  -- Get the header from the first Axi4 transmission
+  machineAsFunction s@(Outputting 0 _) (Nothing, _) = (s, (notReady, Nothing))
+  machineAsFunction s@(Outputting 0 _) (Just inp, recvACK) = (nextState, (notReady, out))
     where
       header = _tuser inp
-      out = Just Axi4StreamM2S { _tdata = singleton $ destinationMAC header !! 0
+      buf = unpack $ pack (destinationMAC header, sourceMAC header, etherType header)
+      out = Just Axi4StreamM2S { _tdata = singleton $ head $ buf
                           , _tkeep = singleton True
                           , _tstrb = singleton False
                           , _tlast = False
@@ -28,13 +30,13 @@ constructHeader = mealyToCircuit machineAsFunction initialState where
                           , _tdest = 0
                           }
       nextState
-        | _tready recvACK = Destination 1 header
+        | _tready recvACK = Outputting 1 buf
         | otherwise = s
 
-  -- Pump out the rest of the destination address
-  machineAsFunction s@(Destination n header) (_, recvACK) = (nextState, (notReady, out))
+  -- Pump out the rest of the header
+  machineAsFunction s@(Outputting n header) (_, recvACK) = (nextState, (notReady, out))
     where
-      out = Just Axi4StreamM2S { _tdata = singleton $ destinationMAC header !! n
+      out = Just Axi4StreamM2S { _tdata = singleton $ header !! n
                           , _tkeep = singleton True
                           , _tstrb = singleton False
                           , _tlast = False
@@ -44,43 +46,10 @@ constructHeader = mealyToCircuit machineAsFunction initialState where
                           }
       nextState
         | not $ _tready recvACK = s
-        | n == 5 = Source 0 header
-        | otherwise = Destination (n+1) header
+        | n == 13 = Passthrough
+        | otherwise = Outputting (n+1) header
 
-  -- Pump out the source address
-  machineAsFunction s@(Source n header) (_, recvACK) = (nextState, (notReady, out))
-    where
-      out = Just Axi4StreamM2S { _tdata = singleton $ sourceMAC header !! n
-                          , _tkeep = singleton True
-                          , _tstrb = singleton False
-                          , _tlast = False
-                          , _tuser = ()
-                          , _tid = 0
-                          , _tdest = 0
-                          }
-      nextState
-        | not $ _tready recvACK = s
-        | n == 5 = EtherType 0 header
-        | otherwise = Source (n+1) header
-
-  -- Pump out the ethertype
-  machineAsFunction s@(EtherType n header) (_, recvACK) = (nextState, (notReady, out))
-    where
-      vecEtherType :: Vec 2 (Unsigned 8)
-      vecEtherType = unpack $ etherType header
-      out = Just Axi4StreamM2S { _tdata = singleton $ vecEtherType !! n
-                          , _tkeep = singleton True
-                          , _tstrb = singleton False
-                          , _tlast = False
-                          , _tuser = ()
-                          , _tid = 0
-                          , _tdest = 0
-                          }
-      nextState
-        | not $ _tready recvACK = s
-        | n == 1 = Passthrough
-        | otherwise = EtherType (n+1) header
-
+  -- Passthrough mode, just append the rest of the packet after the header
   machineAsFunction Passthrough (Nothing, recvACK) = (Passthrough, (recvACK, Nothing))
   machineAsFunction Passthrough (Just inp, recvACK) = (nextState, (recvACK, out)) where
       nextState
