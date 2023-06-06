@@ -18,37 +18,30 @@ deconstructHeader = mealyToCircuit machineAsFunction initialState where
   ready = Axi4StreamS2M { _tready = True }
   machineAsFunction :: State -> (SingleByteStreamFwd, Axi4StreamS2M) -> (State, (Axi4StreamS2M, TaggedSingleByteStreamFwd))
   machineAsFunction s@(Buffering _ _) (Nothing, _) = (s, (ready, Nothing))
-  machineAsFunction s@(Passthrough _ ) (Nothing, _) = (s, (ready, Nothing))
-  machineAsFunction s@(Buffering n header) (Just inp, recvACK) = (nextState, (recvACK, out))
-   where
+  machineAsFunction s@(Buffering n header) (Just inp, _) = (nextState, (ready, Nothing))
+    where
+      newHeader = replace n (head $ (_tdata inp)) header
       nextState
-       
-        | n < 14 =  Buffering (n+1) (replace n (head $ (_tdata inp)) header)
-        | _tlast inp  = Buffering 0 (replicate d14 0)
-            -- ^ early appearence of the _tlast 
-        | n == 14 &&  _tready recvACK =  Passthrough   ehHeader
+        | _tlast inp = initialState
+            -- ^ early appearence of the _tlast
+        | n == 13 =  Passthrough ehHeader
+        | n < 13 =  Buffering (n+1) newHeader
         where
-          dest = take d6 header
-          src  = take d6 (drop d6 header)
-          eth  = unpack $ pack $ drop d12 header
+          (dest, src, eth) = unpack $ pack newHeader
           ehHeader = EthernetHeader { destinationMAC = dest, sourceMAC = src, etherType = eth}
-      
-      
-      out=Nothing
-      
-  machineAsFunction s@(Passthrough header) (Just inp, recvACK) 
-        |_tlast inp   = (Buffering 0 (replicate d14 0), (recvACK, Nothing))
-        |otherwise           = (Passthrough header, (recvACK, out))
-              where 
-                out = Just Axi4StreamM2S{  _tdata  =_tdata inp
-                                         , _tkeep = _tkeep inp
-                                         , _tstrb = _tstrb inp
-                                         , _tlast = _tlast inp
-                                         ,_tuser = EthernetHeader { destinationMAC = destinationMAC header 
-                                                                     , sourceMAC = sourceMAC header 
-                                                                     , etherType = etherType header 
-                                                                  }
-                                         , _tid = _tid inp
-                                         , _tdest = _tdest inp
-                                       }
-     
+
+  machineAsFunction s@(Passthrough _ ) (Nothing, recvACK) = (s, (recvACK, Nothing))
+  machineAsFunction s@(Passthrough header) (Just inp, recvACK) = (s, (recvACK, out))
+    where
+      nextState
+        | not $ _tready recvACK = s
+        | _tlast inp = initialState
+        | otherwise = Passthrough header
+      out = Just Axi4StreamM2S{  _tdata  =_tdata inp
+                              , _tkeep = _tkeep inp
+                              , _tstrb = _tstrb inp
+                              , _tlast = _tlast inp
+                              , _tuser = header
+                              , _tid = _tid inp
+                              , _tdest = _tdest inp
+                              }
