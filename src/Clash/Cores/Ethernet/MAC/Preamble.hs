@@ -1,11 +1,11 @@
 module Clash.Cores.Ethernet.MAC.Preamble ( preambleInserter ) where
 
 import Clash.Prelude
+import Data.Maybe ( isNothing )
 import Protocols
 import Protocols.Axi4.Stream
-import Data.Maybe ( isNothing )
 
-import Clash.Cores.Ethernet.Stream ( mealyToCircuit, SingleByteStream, SingleByteStreamFwd )
+import Clash.Cores.Ethernet.Stream ( SingleByteStream, SingleByteStreamFwd, mealyToCircuit )
 
 -- | Inserts the preamble in front of a packet.
 --
@@ -32,11 +32,12 @@ preambleInserter = mealyToCircuit machineAsFunction 8 where
                   | otherwise = n
                 out
                   | isNothing inp = Nothing
-                  | otherwise = Just Axi4StreamM2S { _tdata = singleton $ if n == 1 then 0xd5 else 0x55
-                                    , _tkeep = singleton True
-                                    , _tstrb = singleton False
-                                    , _tlast = False
-                                    , _tuser = ()
-                                    , _tid = 0
-                                    , _tdest = 0
-                                    }
+                  | otherwise = Just Axi4StreamM2S
+                                  { _tdata = singleton $ if n == 1 then 0xd5 else 0x55
+                                  , _tkeep = singleton True
+                                  , _tstrb = singleton False
+                                  , _tlast = False
+                                  , _tuser = ()
+                                  , _tid = 0
+                                  , _tdest = 0
+                                  }
