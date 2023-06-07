@@ -46,7 +46,7 @@ constructHeader = mealyToCircuit machineAsFunction initialState where
                           }
       nextState
         | not $ _tready recvACK = s
-        | n == 13 = Passthrough
+        | n == maxBound = Passthrough
         | otherwise = Outputting (n+1) header
 
   -- Passthrough mode, just append the rest of the packet after the header
