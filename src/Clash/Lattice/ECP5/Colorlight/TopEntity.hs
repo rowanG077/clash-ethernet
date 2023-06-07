@@ -96,7 +96,7 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
     eth1Txclk = rgmii_rx_clk eth1_rx
 
     {- SETUP MAC LAYER -}
-    ((), eth0Tx) = toSignals circ ((),())
+    ((), eth0Tx) = toSignals circ (eth0_rx,())
       where
         with50 = withClockResetEnable clk50 rst50 en50
 
@@ -110,11 +110,11 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
 
         circ = do
           let (rxMAC, txMAC) = macCircuits eth0Txclk resetGen enableGen clk50 rst50 en50
-          let (rxRGMII, txRGMII) = rgmiiCircuits eth0Txclk resetGen enableGen eth0_rx (delayg d80) (delayg d0) (\a b _ -> iddrx1f a b) (\a b _ -> oddrx1f a b)
+          let (rxRGMII, txRGMII) = rgmiiCircuits eth0Txclk resetGen enableGen (delayg d80) (delayg d0) (\a b _ -> iddrx1f a b) (\a b _ -> oddrx1f a b)
 
           txRGMII <| txMAC <| mainLogic <| rxMAC <| rxRGMII
 
-    ((), eth1Tx) = toSignals circ ((),())
+    ((), eth1Tx) = toSignals circ (eth1_rx,())
       where
         with50 = withClockResetEnable clk50 rst50 en50
 
@@ -123,7 +123,7 @@ topEntity clk25 uartRxBit _dq_in mdio_in eth0_rx eth1_rx =
 
         circ = do
           let (rxMAC, txMAC) = macCircuits eth1Txclk resetGen enableGen clk50 rst50 en50
-          let (rxRGMII, txRGMII) = rgmiiCircuits eth1Txclk resetGen enableGen eth1_rx (delayg d80) (delayg d0) (\a b _ -> iddrx1f a b) (\a b _ -> oddrx1f a b)
+          let (rxRGMII, txRGMII) = rgmiiCircuits eth1Txclk resetGen enableGen (delayg d80) (delayg d0) (\a b _ -> iddrx1f a b) (\a b _ -> oddrx1f a b)
 
           txRGMII <| txMAC <| mainLogic <| rxMAC <| rxRGMII
 
