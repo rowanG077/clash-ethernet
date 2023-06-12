@@ -3,9 +3,9 @@
 module Clash.Cores.Ethernet.RGMII ( rgmiiCircuits, rgmiiSender, rgmiiReceiver, RGMIIRXChannel (..), RGMIITXChannel (..) ) where
 
 import Clash.Prelude
-import Data.Maybe ( isJust, isNothing )
+import Data.Maybe ( isJust )
 
-import Clash.Cores.Ethernet.Stream ( SingleByteStream, SingleByteStreamFwd, mealyToCircuit )
+import Clash.Cores.Ethernet.Stream ( SingleByteStream )
 import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Internal ( CSignal(..) )
@@ -33,9 +33,8 @@ instance Protocol (RGMIITXChannel dom) where
     type Bwd (RGMIITXChannel dom) = ()
 
 -- | Convenience function for getting the circuits of both `rgmiiSender` and `rgmiiReceiver`.
-rgmiiCircuits :: forall dom domDDR fPeriod edge reset init polarity .
-  KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
-  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+rgmiiCircuits :: forall dom domDDR . KnownDomain domDDR
+  => KnownDomain dom
   => Clock dom
   -> Reset dom
   -> Enable dom
@@ -57,9 +56,8 @@ rgmiiCircuits clk rst en rxDelay txDelay iddr oddr = (rgmiiReceiver clk rst en r
 -- Always has `_tready` set to `True`.
 --
 -- NOTE: for now transmission error is not considered
-rgmiiSender :: forall dom domDDR fPeriod edge reset init polarity
-  . KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
-  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+rgmiiSender :: forall dom domDDR . KnownDomain domDDR
+  => KnownDomain dom
   => Clock dom
   -> Reset dom
   -> Enable dom
@@ -101,9 +99,8 @@ rgmiiSender txClk rst en txdelay oddr = Circuit circuitFunction where
 -- Sets `_tlast` to `True` iff this is the last byte in an Ethernet frame, see `unsafeToAxi`.
 --
 -- Does not handle backpressure!
-rgmiiReceiver :: forall (dom :: Domain) (domDDR :: Domain) fPeriod edge reset init polarity .
-  KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
-  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+rgmiiReceiver :: forall dom domDDR . KnownDomain domDDR
+  => KnownDomain dom
   => Clock dom
   -> Reset dom
   -> Enable dom
@@ -142,9 +139,8 @@ unsafeToAxi = Circuit circuitFunction
 -- | Extracts rxDv, rxErr and rxData from an `RGMIIRXChannel` and returns it as a `CSignal`
 --
 -- Does not handle backpressure!
-rgmiiReceiverRaw :: forall (dom :: Domain) (domDDR :: Domain) fPeriod edge reset init polarity .
-  KnownConfiguration domDDR ('DomainConfiguration domDDR fPeriod edge reset init polarity)
-  => KnownConfiguration dom ('DomainConfiguration dom (2*fPeriod) edge reset init polarity)
+rgmiiReceiverRaw :: forall dom domDDR . KnownDomain domDDR
+  => KnownDomain dom
   => (forall a . Signal domDDR a -> Signal domDDR a)
   -- ^ rx delay function
   -> (forall a . (NFDataX a, BitPack a) => Clock dom -> Reset dom -> Enable dom -> Signal domDDR a -> Signal dom (a, a))
