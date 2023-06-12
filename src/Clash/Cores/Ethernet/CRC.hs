@@ -5,7 +5,8 @@ import Clash.Prelude
 -- This file contains haskell code for calculating the CRC.
 -- The CRCState is programmed so that it can be updated one byte at a time.
 -- This way we do not need a buffer to store the entire input.
--- For more information on CRC see crc-calculation.py and/or Clause 3.2.9.
+-- For more information on CRC see Clause 3.2.9. File is available behind a pay wall.
+-- A free draft version is available here: https://www.ieee802.org/3/as/public/0503/3d0_1_CMP.pdf#page=6
 
 type Byte = BitVector 8
 type CRCState = (BitVector 32, Index 5)
@@ -19,6 +20,8 @@ poly_bytes = 0b100000100110000010001110110110111
 -- first bit does not matter, because msb gets dropped anyways.
 
 -- Update 32 bit CRC based on one bit of input.
+-- Append the new bit and return the result modulo poly_bytes 
+-- That is: XOR with poly_bytes if x^32 (msb crc) is set. And disregard the coefficient of x^32 (msb crc).
 upd_crc_bit :: BitVector 32 -> Bit -> BitVector 32
 upd_crc_bit crc b = res where
     app :: BitVector 33
@@ -30,8 +33,11 @@ upd_crc_byte :: BitVector 32 -> Byte -> BitVector 32
 upd_crc_byte crc new_b = foldl upd_crc_bit crc (unpack new_b)
 
 -- Update CRCState based on one byte of input.
+-- If index of CRCState is four, then we have handled the first four input bytes.
+-- Otherwise we need to handle the incoming byte as one of the first four. See 3.2.9a).
 upd_crc_state :: CRCState -> Byte -> CRCState
-upd_crc_state (crc, i) byte = if i < 4 then (crc', i + 1) else (upd_crc_byte crc byte, i) where
+upd_crc_state (crc, 4) byte = (upd_crc_byte crc byte, 4)
+upd_crc_state (crc, i) byte = (crc', i + 1) where    
     (a, b, c, d) = unpack crc :: (Byte, Byte, Byte, Byte)
     crc' = case i of 
                 0 -> (complement byte) ++# b ++# c ++# d
@@ -40,10 +46,12 @@ upd_crc_state (crc, i) byte = if i < 4 then (crc', i + 1) else (upd_crc_byte crc
                 3 -> a ++# b ++# c ++# (complement byte)
                 _ -> error("upd_crc_state, crc': unexpected index.")
 
--- Final steps after input is done. Multiply with x^32 and complement the result.
+-- Final steps after input is done.
+-- Multiply with x^32 and complement the result. See 3.2.9c), 3.2.9e)
 finish_crc_state :: CRCState -> BitVector 32
 finish_crc_state (crc, _) = complement res where
     res = foldl upd_crc_byte crc (unpack 0 :: Vec 4 Byte)
+
 
 -- Calculate the CRC for >= 4 bytes of input.
 calc_crc_buffered :: forall n . KnownNat n => Vec (n+4) Byte -> BitVector 32
