@@ -9,36 +9,37 @@ import Clash.Cores.Ethernet.Stream
 data State = Outputting (Index 14) (Vec 14 (Unsigned 8)) | Passthrough
   deriving (Show, Eq, Generic, NFDataX)
 
-constructHeader :: HiddenClockResetEnable dom => Circuit (TaggedSingleByteStream dom) (SingleByteStream dom)
+constructHeader :: HiddenClockResetEnable dom => Circuit (TaggedStream dom) (FourByteStream dom)
 constructHeader = mealyToCircuit machineAsFunction initialState where
   notReady = Axi4StreamS2M { _tready = False }
   initialState = Outputting 0 (replicate d14 0)
 
-  machineAsFunction :: State -> (TaggedSingleByteStreamFwd, Axi4StreamS2M) -> (State, (Axi4StreamS2M, SingleByteStreamFwd))
+  machineAsFunction :: State -> (TaggedStreamFwd, Axi4StreamS2M) -> (State, (Axi4StreamS2M, FourByteStreamFwd))
   -- Get the header from the first Axi4 transmission
   machineAsFunction s@(Outputting 0 _) (Nothing, _) = (s, (notReady, Nothing))
   machineAsFunction s@(Outputting 0 _) (Just inp, recvACK) = (nextState, (notReady, out))
     where
       header = _tuser inp
       buf = unpack $ pack (destinationMAC header, sourceMAC header, etherType header)
-      out = Just Axi4StreamM2S { _tdata = singleton $ head buf
-                          , _tkeep = singleton True
-                          , _tstrb = singleton False
+      out = Just Axi4StreamM2S { _tdata = takeI buf
+                          , _tkeep = replicate d4 True
+                          , _tstrb = replicate d4 False
                           , _tlast = False
                           , _tuser = ()
                           , _tid = 0
                           , _tdest = 0
                           }
       nextState
-        | _tready recvACK = Outputting 1 (rotateLeftS buf d1)
+        | _tready recvACK = Outputting 4 (rotateLeftS buf d4)
         | otherwise = s
 
   -- Pump out the rest of the header
   machineAsFunction s@(Outputting n header) (_, recvACK) = (nextState, (notReady, out))
     where
-      out = Just Axi4StreamM2S { _tdata = singleton $ head header
-                          , _tkeep = singleton True
-                          , _tstrb = singleton False
+      newCount = boundedAdd n 4
+      out = Just Axi4StreamM2S { _tdata = takeI header
+                          , _tkeep = map (\x -> n <= maxBound - x) $ generate d4 (+1) 0
+                          , _tstrb = replicate d4 False
                           , _tlast = False
                           , _tuser = ()
                           , _tid = 0
@@ -46,14 +47,14 @@ constructHeader = mealyToCircuit machineAsFunction initialState where
                           }
       nextState
         | not $ _tready recvACK = s
-        | n == maxBound = Passthrough
-        | otherwise = Outputting (n+1) (rotateLeftS header d1)
+        | newCount >= maxBound = Passthrough
+        | otherwise = Outputting newCount (rotateLeftS header d4)
 
   -- Passthrough mode, just append the rest of the packet after the header
   machineAsFunction Passthrough (Nothing, recvACK) = (Passthrough, (recvACK, Nothing))
   machineAsFunction Passthrough (Just inp, recvACK) = (nextState, (recvACK, out)) where
       nextState
-        | _tlast inp = initialState
+        | _tlast inp && _tready recvACK = initialState
         | otherwise = Passthrough
       out = Just Axi4StreamM2S { _tdata = _tdata inp
                           , _tkeep = _tkeep inp
