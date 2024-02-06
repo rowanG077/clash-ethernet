@@ -85,8 +85,10 @@ library
     Clash.Lattice.ECP5.Colorlight.TopEntity
     Clash.Cores.Ethernet.Ethernet
     Clash.Cores.Ethernet.MDIO
+    Clash.Cores.Ethernet.CRC
     Clash.Lattice.ECP5.Prims
     Clash.Lattice.ECP5.Colorlight.CRG
+    Clash.Lattice.ECP5.Colorlight.Bridge
   default-language: Haskell2010
   build-depends:
     interpolate,
@@ -112,6 +114,7 @@ test-suite test-library
   main-is: unittests.hs
   other-modules:
     Test.Cores.Ethernet.Ethernet
+    Test.Cores.Ethernet.CRC
   build-depends:
     clash-eth,
     QuickCheck,
